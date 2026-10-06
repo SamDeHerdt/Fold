@@ -214,7 +214,15 @@ final class ControlItem {
     /// old `$isDraggingMenuBarItem.removeDuplicates().sink`.
     private var isDraggingMenuBarItemObservationTask: Task<Void, Never>?
 
+    /// Fold: whether the drawer, or an item it revealed in the menu bar, is
+    /// open. While true the chevron keeps the native menu-bar highlight and
+    /// points up, so it reads as one shape with the revealed item's pill.
+    private var isFoldEngaged = false
+    private var latestFoldEngaged = false
+    private var foldEngagedObservationTask: Task<Void, Never>?
+
     deinit {
+        foldEngagedObservationTask?.cancel()
         showIceIconObservationTask?.cancel()
         iceIconObservationTask?.cancel()
         sectionDividerStyleObservationTask?.cancel()
@@ -380,6 +388,8 @@ final class ControlItem {
         }
 
         cancellables = c
+
+        if let appState { configureFoldEngagedObservation(appState: appState) }
 
         configureStatusItemCancellables()
     }
@@ -583,6 +593,49 @@ final class ControlItem {
         updateStatusItem()
     }
 
+    /// Fold: tracks the drawer and temporarily revealed items so the chevron
+    /// stays visually joined to whatever it opened.
+    private func configureFoldEngagedObservation(appState: AppState) {
+        guard identifier == .visible, Constants.bundleIdentifier == "com.samdeherdt.fold" else { return }
+        foldEngagedObservationTask?.cancel()
+        foldEngagedObservationTask = Task { @MainActor [weak self, navigationState = appState.navigationState, itemManager = appState.itemManager] in
+            let changes = Observations {
+                navigationState.isIceBarPresented || !itemManager.temporarilyShownItemContexts.isEmpty
+            }
+            for await engaged in changes {
+                guard let self else { return }
+                latestFoldEngaged = engaged
+                if engaged {
+                    setFoldEngaged(true)
+                } else {
+                    // The drawer closes just before a clicked item is
+                    // revealed; wait so the highlight doesn't flicker off.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                        guard let self, !latestFoldEngaged else { return }
+                        setFoldEngaged(false)
+                    }
+                }
+            }
+        }
+    }
+
+    private func setFoldEngaged(_ engaged: Bool) {
+        guard engaged != isFoldEngaged else { return }
+        isFoldEngaged = engaged
+        updateStatusItem()
+        statusItem.button?.highlight(engaged)
+        guard engaged else { return }
+        // AppKit clears a status button's highlight when its own click
+        // tracking ends, which can land after this change. Reassert it once
+        // the click has finished.
+        for delay in [0.15, 0.45] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, isFoldEngaged else { return }
+                statusItem.button?.highlight(true)
+            }
+        }
+    }
+
     /// Updates the appearance of the status item using the current hiding state.
     private func updateStatusItem() {
         guard
@@ -608,9 +661,9 @@ final class ControlItem {
             let icon = appState.settings.general.iceIcon
 
             // We can usually just create the image directly from the icon.
-            var image = switch state {
-            case .showSection: icon.visible.nsImage(for: appState)
-            case .hideSection: icon.hidden.nsImage(for: appState)
+            var image = switch (state, isFoldEngaged) {
+            case (.showSection, _), (_, true): icon.visible.nsImage(for: appState)
+            case (.hideSection, false): icon.hidden.nsImage(for: appState)
             }
 
             if
@@ -626,6 +679,9 @@ final class ControlItem {
             }
 
             button.image = image
+            if isFoldEngaged {
+                button.highlight(true)
+            }
         case .hidden, .alwaysHidden:
             switch state {
             case .showSection:
