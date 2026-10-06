@@ -123,9 +123,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // user back through onboarding.
         if isFirstLaunch || appState.permissions.permissionsState == .missing {
             appState.openWindow(.permissions)
-        } else if Constants.bundleIdentifier == "com.samdeherdt.fold" && !UserDefaults.standard.bool(forKey: "FoldOpenedGlassSettingsV2") {
-            UserDefaults.standard.set(true, forKey: "FoldOpenedGlassSettingsV2")
-            appState.openWindow(.settings)
         }
     }
 

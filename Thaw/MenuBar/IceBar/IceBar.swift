@@ -402,9 +402,22 @@ private struct IceBarContentView: View {
         8
     }
 
-    /// Keep Fold's everyday drawer small even when the hidden section is long.
-    /// Match the captured images' rendered widths so short sections still fit naturally.
+    /// Size the drawer to its icons so every hidden item is reachable. It only
+    /// scrolls once the icons outgrow the screen; a fixed cap here clipped the
+    /// leading items, which a vertical mouse wheel cannot scroll back into view.
     private var compactWidth: CGFloat {
+        min(maxDrawerWidth, naturalWidth)
+    }
+
+    private var maxDrawerWidth: CGFloat {
+        screen.frame.width - 48
+    }
+
+    private var overflows: Bool {
+        naturalWidth > maxDrawerWidth
+    }
+
+    private var naturalWidth: CGFloat {
         let iconsWidth = items.reduce(CGFloat.zero) { total, item in
             guard let image = imageCache.images[item.tag]?.nsImage,
                   image.size.height > 0 else { return total + 24 }
@@ -412,8 +425,8 @@ private struct IceBarContentView: View {
             return total + image.size.width * height / image.size.height
         }
         let spacing = CGFloat(max(0, items.count - 1)) * itemSpacing
-        let naturalWidth = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + 10
-        return min(screen.frame.width, max(44, min(334, naturalWidth)))
+        let width = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + 10
+        return max(44, width)
     }
 
     private var verticalPadding: CGFloat {
@@ -637,7 +650,7 @@ private struct IceBarContentView: View {
             let isLightBackground = foldColorScheme == .light
             switch layout {
             case .horizontal:
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: overflows) {
                     HStack(spacing: itemSpacing) {
                         ForEach(items, id: \.windowID) { item in
                             IceBarItemView(
