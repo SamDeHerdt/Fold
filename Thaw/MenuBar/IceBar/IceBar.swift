@@ -363,6 +363,12 @@ private struct IceBarContentView: View {
     @State private var scrollIndicatorsFlashTrigger = 0
     @State private var cacheGracePeriodActive = true
     @State private var loadingTimedOut = false
+    @AppStorage("FoldAppearanceV1") private var foldAppearance = "dark"
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    private var foldColorScheme: ColorScheme {
+        foldAppearance == "light" ? .light : foldAppearance == "dark" ? .dark : systemColorScheme
+    }
 
     let screen: NSScreen
     let section: MenuBarSection.Name
@@ -393,11 +399,25 @@ private struct IceBarContentView: View {
     }
 
     private var horizontalPadding: CGFloat {
-        3
+        8
+    }
+
+    /// Keep Fold's everyday drawer small even when the hidden section is long.
+    /// Match the captured images' rendered widths so short sections still fit naturally.
+    private var compactWidth: CGFloat {
+        let iconsWidth = items.reduce(CGFloat.zero) { total, item in
+            guard let image = imageCache.images[item.tag]?.nsImage,
+                  image.size.height > 0 else { return total + 24 }
+            let height = itemMaxHeight ?? image.size.height
+            return total + image.size.width * height / image.size.height
+        }
+        let spacing = CGFloat(max(0, items.count - 1)) * itemSpacing
+        let naturalWidth = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + 10
+        return min(screen.frame.width, max(44, min(334, naturalWidth)))
     }
 
     private var verticalPadding: CGFloat {
-        screen.hasNotch && configuration.hasRoundedShape ? 2 : 0
+        2
     }
 
     private var contentHeight: CGFloat {
@@ -461,11 +481,7 @@ private struct IceBarContentView: View {
     }
 
     private var clipShape: some InsettableShape {
-        if configuration.hasRoundedShape {
-            RoundedRectangle(cornerRadius: contentHeight / 2, style: .circular)
-        } else {
-            RoundedRectangle(cornerRadius: contentHeight / 4, style: .continuous)
-        }
+        Capsule()
     }
 
     var body: some View {
@@ -479,8 +495,8 @@ private struct IceBarContentView: View {
             }
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
-            .menuBarItemContainer(appState: appState, colorInfo: colorManager.colorInfo)
-            .foregroundStyle(colorManager.colorInfo?.isBright(for: screen) == true ? .black : .white)
+            .modifier(FoldGlassSurface())
+            .foregroundStyle(foldColorScheme == .dark ? .white : .black)
             .clipShape(clipShape)
 
             if configuration.current.borderOnThawBar {
@@ -490,9 +506,13 @@ private struct IceBarContentView: View {
                     .foregroundStyle(Color(cgColor: configuration.current.borderColor))
             }
         }
-        .padding(5)
+        .padding(.horizontal, 5)
+        .padding(.bottom, 5)
+        .padding(.top, 2)
+        .frame(width: layout == .horizontal ? compactWidth : nil)
         .frame(maxWidth: screen.frame.width)
         .fixedSize(horizontal: true, vertical: layout == .horizontal)
+        .environment(\.colorScheme, foldColorScheme)
         .onAppear {
             Self.diagLog.notice("""
             IceBarContentView appeared: \
@@ -614,10 +634,10 @@ private struct IceBarContentView: View {
                 Self.diagLog.warning("IceBar content: showing '\(self.cacheGracePeriodActive ? "Loading…" : "Unable to display")' for section \(self.section.logString) — imageCache.cacheFailed=true (grace period active: \(self.cacheGracePeriodActive), loadingTimedOut: \(self.loadingTimedOut), cached images count: \(self.imageCache.images.count), items in section: \(self.itemManager.itemCache[self.section].count))")
             }
         } else {
-            let isLightBackground = colorManager.colorInfo?.isBright(for: screen) == true
+            let isLightBackground = foldColorScheme == .light
             switch layout {
             case .horizontal:
-                ScrollView(.horizontal) {
+                ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: itemSpacing) {
                         ForEach(items, id: \.windowID) { item in
                             IceBarItemView(
@@ -628,7 +648,6 @@ private struct IceBarContentView: View {
                                 section: section,
                                 displayID: screen.displayID,
                                 maxHeight: itemMaxHeight,
-                                hasRoundedShape: configuration.hasRoundedShape,
                                 tooltipDelay: appState.settings.advanced.tooltipDelay,
                                 isLightBackground: isLightBackground
                             )
@@ -636,7 +655,7 @@ private struct IceBarContentView: View {
                     }
                     .frame(height: contentHeight)
                 }
-                .environment(\.isScrollEnabled, frame.width == screen.frame.width)
+                .environment(\.isScrollEnabled, true)
                 .defaultScrollAnchor(.trailing)
                 .scrollIndicatorsFlash(trigger: scrollIndicatorsFlashTrigger)
                 .task {
@@ -655,7 +674,6 @@ private struct IceBarContentView: View {
                                 section: section,
                                 displayID: screen.displayID,
                                 maxHeight: itemMaxHeight,
-                                hasRoundedShape: configuration.hasRoundedShape,
                                 tooltipDelay: appState.settings.advanced.tooltipDelay,
                                 isLightBackground: isLightBackground
                             )
@@ -682,7 +700,6 @@ private struct IceBarContentView: View {
                                         section: section,
                                         displayID: screen.displayID,
                                         maxHeight: itemMaxHeight,
-                                        hasRoundedShape: configuration.hasRoundedShape,
                                         tooltipDelay: appState.settings.advanced.tooltipDelay,
                                         isLightBackground: isLightBackground
                                     )
@@ -730,14 +747,8 @@ private struct IceBarItemView: View {
     let section: MenuBarSection.Name
     let displayID: CGDirectDisplayID
     let maxHeight: CGFloat?
-    let hasRoundedShape: Bool
     let tooltipDelay: TimeInterval
     let isLightBackground: Bool
-
-    private var pillCornerRadius: CGFloat {
-        guard let h = maxHeight, h > 0 else { return 4 }
-        return hasRoundedShape ? h / 2 : h / 4
-    }
 
     private var leftClickAction: () -> Void {
         return { [weak itemManager, weak menuBarManager] in
@@ -842,12 +853,14 @@ private struct IceBarItemView: View {
         if let image {
             let size = targetSize(for: image)
             Image(nsImage: image)
+                .renderingMode(.template)
                 .interpolation(.high)
                 .antialiased(true)
                 .resizable()
                 .frame(width: size.width, height: size.height)
+                .foregroundStyle(isLightBackground ? .black : .white)
                 .background {
-                    RoundedRectangle(cornerRadius: pillCornerRadius, style: hasRoundedShape ? .circular : .continuous)
+                    Capsule()
                         .fill((isLightBackground ? Color.black : Color.white).opacity(isHovered ? 0.15 : 0))
                         .padding(.vertical, 3)
                 }

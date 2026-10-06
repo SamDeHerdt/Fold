@@ -2,18 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>SUFeedURL</key>
-	<string>https://thaw-app.github.io/updates/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>fQ2kWqCLfAPAxQX1rp8gVNoG9hlAV/Gmm7kMBbxFe+A=</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.stonerl.Thaw</string>
+			<string>com.samdeherdt.fold</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>thaw</string>
+				<string>fold</string>
 			</array>
 		</dict>
 	</array>
@@ -25,5 +21,11 @@
 	<string>file:///usr/bin/defaults</string>
 	<key>ThawSkyLightFrameworkPath</key>
 	<string>/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight</string>
+	<key>CFBundleDisplayName</key>
+	<string>Fold</string>
+	<key>CFBundleName</key>
+	<string>Fold</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
 </dict>
 </plist>

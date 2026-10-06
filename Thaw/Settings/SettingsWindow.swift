@@ -39,10 +39,12 @@ struct SettingsWindow: Scene {
                     .environment(appState.permissions)
                     .frame(width: ThawOnboardingWindowMetrics.width, height: ThawOnboardingWindowMetrics.height)
                 }
-                .frame(minWidth: 850, minHeight: 600)
+                .frame(minWidth: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 440 : 850,
+                       minHeight: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 340 : 600)
         }
         .windowResizability(.contentSize)
-        .defaultSize(width: 950, height: 650)
+        .defaultSize(width: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 440 : 950,
+                     height: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 340 : 650)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
         .environment(appState)

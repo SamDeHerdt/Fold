@@ -61,9 +61,9 @@ nonisolated struct ControlItemImageSet: Codable, Hashable, Identifiable {
 nonisolated extension ControlItemImageSet {
     /// The default image set for the Ice icon.
     static let defaultIceIcon = ControlItemImageSet(
-        name: .iceCube,
-        hidden: .catalog("IceCubeStroke"),
-        visible: .catalog("IceCubeFill")
+        name: .chevronDown,
+        hidden: .symbol("chevron.down"),
+        visible: .symbol("chevron.up")
     )
 
     /// The image sets that the user can choose to display in the Ice icon.

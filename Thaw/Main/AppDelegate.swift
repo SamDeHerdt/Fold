@@ -123,6 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // user back through onboarding.
         if isFirstLaunch || appState.permissions.permissionsState == .missing {
             appState.openWindow(.permissions)
+        } else if Constants.bundleIdentifier == "com.samdeherdt.fold" && !UserDefaults.standard.bool(forKey: "FoldOpenedGlassSettingsV2") {
+            UserDefaults.standard.set(true, forKey: "FoldOpenedGlassSettingsV2")
+            appState.openWindow(.settings)
         }
     }
 
@@ -224,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard
             let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
             let url = URL(string: urlString),
-            url.scheme?.lowercased() == "thaw"
+            url.scheme?.lowercased() == (Constants.bundleIdentifier == "com.samdeherdt.fold" ? "fold" : "thaw")
         else { return }
 
         // Extract sender bundle ID from the Apple Event

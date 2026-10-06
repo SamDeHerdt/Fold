@@ -829,6 +829,7 @@ final class ControlItem {
             // transiently has no item windows on the active space (#1012).
             let screenForCheck = window?.screen ?? NSScreen.main
             if let screen = screenForCheck, !screen.isSystemMenuBarVisible() {
+                diagLog.notice("Control action ignored: system menu bar not visible")
                 return
             }
 
@@ -871,7 +872,10 @@ final class ControlItem {
                     let section = menuBarManager.section(withName: sectionName),
                     section.isEnabled
                 {
+                    diagLog.notice("Control action: toggle \(sectionName), hidden=\(section.isHidden)")
                     section.toggle()
+                } else {
+                    diagLog.notice("Control action ignored: section unavailable or disabled")
                 }
             }
         case .rightMouseUp:
@@ -897,6 +901,15 @@ final class ControlItem {
         settingsItem.keyEquivalentModifierMask = .command
         settingsItem.image = NSImage(systemSymbolName: "gear", accessibilityDescription: "Settings")
         menu.addItem(settingsItem)
+
+        if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            menu.addItem(.separator())
+            let quit = NSMenuItem(title: "Quit Fold", action: #selector(NSApp.terminate), keyEquivalent: "q")
+            quit.keyEquivalentModifierMask = .command
+            quit.target = NSApp
+            menu.addItem(quit)
+            return menu
+        }
 
         menu.addItem(.separator())
 

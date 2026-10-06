@@ -561,7 +561,7 @@ actor SourcePIDCache {
         }
 
         let ccBundleID = "com.apple.controlcenter"
-        let thawBundleID = "com.stonerl.Thaw"
+        let thawBundleID = "com.samdeherdt.fold"
         var appsChecked = 0
         var appsWithBar = 0
         var appsSkipped = 0

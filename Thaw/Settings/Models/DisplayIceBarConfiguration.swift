@@ -48,9 +48,9 @@ nonisolated struct DisplayIceBarConfiguration: Codable, Equatable {
 
     /// Default configuration (disabled, dynamic location, horizontal layout).
     static let defaultConfiguration = DisplayIceBarConfiguration(
-        useIceBar: false,
+        useIceBar: true,
         useThawBarForAlwaysHidden: false,
-        iceBarLocation: .dynamic,
+        iceBarLocation: .iceIcon,
         alwaysShowHiddenItems: false,
         iceBarLayout: .horizontal,
         gridColumns: 4,
