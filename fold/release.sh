@@ -16,7 +16,7 @@ cd "$REPO"
 git rev-parse "v$VERSION" >/dev/null 2>&1 && { echo "v$VERSION already exists." >&2; exit 1; }
 
 echo "$VERSION" > VERSION
-git commit -q -m "Release $VERSION" VERSION
+git diff --quiet VERSION || git commit -q -m "Release $VERSION" VERSION
 BUILD_NUMBER="$(git rev-list --count HEAD)"
 
 FOLD_BUILD_DIR="$BUILD" FOLD_OUT="$OUT" "$REPO/fold/build.sh"
