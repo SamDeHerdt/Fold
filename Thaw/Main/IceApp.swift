@@ -32,6 +32,9 @@ enum ThawMain {
         guard Bundle.main.bundleIdentifier == "com.samdeherdt.fold" else { return }
         let defaults = UserDefaults.standard
         defaults.set(true, forKey: Defaults.Key.hasSeenUpdateConsent.rawValue)
+        // Fold has one drawer; an always-hidden section would swallow icons
+        // (and newly placed ones) where the drawer can't show them.
+        defaults.set(false, forKey: Defaults.Key.enableAlwaysHiddenSection.rawValue)
         if AXIsProcessTrusted() {
             defaults.set(true, forKey: Defaults.Key.hasCompletedFirstLaunch.rawValue)
             defaults.set(true, forKey: Defaults.Key.hasSeenOnboarding.rawValue)

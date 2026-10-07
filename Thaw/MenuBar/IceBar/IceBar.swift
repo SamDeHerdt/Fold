@@ -40,6 +40,11 @@ final class IceBarPanel: NSPanel {
     /// Background cache task started when the panel is shown.
     private var cacheTask: Task<Void, Never>?
 
+    /// Fold: lets the content fold back into the chevron before the panel
+    /// hides. The generation cancels a pending hide when the drawer reopens.
+    private let foldMorph = FoldMorph()
+    private var foldCloseGeneration = 0
+
     /// Creates a new Thaw Bar panel with Liquid Glass support.
     init() {
         super.init(
@@ -224,6 +229,9 @@ final class IceBarPanel: NSPanel {
 
         // IMPORTANT: We must set the navigation state and current section
         // before updating the caches.
+        foldCloseGeneration += 1
+        ignoresMouseEvents = false
+        foldMorph.isOpen = true
         appState.navigationState.isIceBarPresented = true
         currentSection = section
         lastShowTimestamp = Date()
@@ -235,7 +243,8 @@ final class IceBarPanel: NSPanel {
             appState: appState,
             colorManager: colorManager,
             screen: screen,
-            section: section
+            section: section,
+            morph: foldMorph
         )
 
         updateOrigin(for: screen)
@@ -286,6 +295,30 @@ final class IceBarPanel: NSPanel {
     }
 
     override func close() {
+        foldCloseGeneration += 1
+        guard
+            Constants.bundleIdentifier == "com.samdeherdt.fold",
+            foldMorph.isOpen,
+            isVisible,
+            contentView != nil,
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        else {
+            foldMorph.isOpen = false
+            finishClose()
+            return
+        }
+        foldMorph.isOpen = false
+        appState?.navigationState.isIceBarPresented = false
+        ignoresMouseEvents = true
+        let generation = foldCloseGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            guard let self, foldCloseGeneration == generation else { return }
+            finishClose()
+        }
+    }
+
+    private func finishClose() {
+        ignoresMouseEvents = false
         CustomTooltipPanel.shared.dismiss()
         cacheTask?.cancel()
         cacheTask = nil
@@ -322,7 +355,8 @@ private final class IceBarHostingView: NSHostingView<IceBarContentView> {
         appState: AppState,
         colorManager: IceBarColorManager,
         screen: NSScreen,
-        section: MenuBarSection.Name
+        section: MenuBarSection.Name,
+        morph: FoldMorph
     ) {
         let rootView = IceBarContentView(
             appState: appState,
@@ -331,7 +365,8 @@ private final class IceBarHostingView: NSHostingView<IceBarContentView> {
             imageCache: appState.imageCache,
             menuBarManager: appState.menuBarManager,
             screen: screen,
-            section: section
+            section: section,
+            morph: morph
         )
         super.init(rootView: rootView)
     }
@@ -363,8 +398,12 @@ private struct IceBarContentView: View {
     @State private var scrollIndicatorsFlashTrigger = 0
     @State private var cacheGracePeriodActive = true
     @State private var loadingTimedOut = false
-    @AppStorage("FoldAppearanceV1") private var foldAppearance = "dark"
+    @AppStorage(FoldKey.appearance) private var foldAppearance = "dark"
+    @AppStorage(FoldKey.maxWidth) private var foldMaxWidth = 0.0
+    @AppStorage(FoldKey.look) private var foldLook = FoldLook.glass.rawValue
     @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var morphProgress: CGFloat = 0
 
     private var foldColorScheme: ColorScheme {
         foldAppearance == "light" ? .light : foldAppearance == "dark" ? .dark : systemColorScheme
@@ -372,6 +411,7 @@ private struct IceBarContentView: View {
 
     let screen: NSScreen
     let section: MenuBarSection.Name
+    let morph: FoldMorph
 
     private var items: [MenuBarItem] {
         itemManager.itemCache.managedItems(for: section)
@@ -410,7 +450,31 @@ private struct IceBarContentView: View {
     }
 
     private var maxDrawerWidth: CGFloat {
-        screen.frame.width - 48
+        FoldWidth.cap(stored: foldMaxWidth, screenWidth: screen.frame.width)
+    }
+
+    /// Where the chevron sits along the bar, so the drawer grows out of it.
+    /// Mirrors IceBarPanel's icon-anchored origin; nil falls back to centre.
+    private var morphAnchorX: CGFloat? {
+        guard
+            layout == .horizontal,
+            let controlItem = itemManager.itemCache.managedItems.first(matching: .visibleControlItem),
+            let itemBounds = Bridging.getWindowBounds(for: controlItem.windowID)
+        else { return nil }
+        let panelWidth = compactWidth
+        let upper = max(screen.frame.minX, screen.frame.maxX - panelWidth)
+        let panelX = (itemBounds.midX - panelWidth / 2).clamped(to: screen.frame.minX ... upper)
+        return itemBounds.midX - panelX - 5
+    }
+
+    private func setMorph(open: Bool) {
+        if reduceMotion {
+            morphProgress = open ? 1 : 0
+        } else if open {
+            withAnimation(.spring(duration: 0.35, bounce: 0.3)) { morphProgress = 1 }
+        } else {
+            withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.22)) { morphProgress = 0 }
+        }
     }
 
     private var overflows: Bool {
@@ -508,9 +572,9 @@ private struct IceBarContentView: View {
             }
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
-            .modifier(FoldGlassSurface())
             .foregroundStyle(foldColorScheme == .dark ? .white : .black)
-            .clipShape(clipShape)
+            .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
+            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX))
 
             if configuration.current.borderOnThawBar {
                 clipShape
@@ -541,6 +605,8 @@ private struct IceBarContentView: View {
             """)
         }
         .onFrameChange(update: $frame)
+        .onAppear { setMorph(open: true) }
+        .onChange(of: morph.isOpen) { _, isOpen in setMorph(open: isOpen) }
         .task(id: section) {
             cacheGracePeriodActive = true
             loadingTimedOut = false

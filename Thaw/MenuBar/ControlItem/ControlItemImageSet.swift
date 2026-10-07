@@ -21,6 +21,12 @@ nonisolated struct ControlItemImageSet: Codable, Hashable, Identifiable {
         case ellipsis = "Ellipsis"
         case iceCube = "Ice Cube"
         case sunglasses = "Sunglasses"
+        case foldCircle = "Circle"
+        case foldLines = "Lines"
+        case foldGrid = "Grid"
+        case foldSparkle = "Sparkle"
+        case foldTray = "Tray"
+        case foldCapsule = "Pill"
         case custom = "Custom"
 
         /// Localized string key representation.
@@ -34,6 +40,12 @@ nonisolated struct ControlItemImageSet: Codable, Hashable, Identifiable {
             case .ellipsis: "Ellipsis"
             case .iceCube: "Ice Cube"
             case .sunglasses: "Sunglasses"
+            case .foldCircle: "Circle"
+            case .foldLines: "Lines"
+            case .foldGrid: "Grid"
+            case .foldSparkle: "Sparkle"
+            case .foldTray: "Tray"
+            case .foldCapsule: "Pill"
             case .custom: "Custom"
             }
         }
@@ -65,6 +77,17 @@ nonisolated extension ControlItemImageSet {
         hidden: .symbol("chevron.down"),
         visible: .symbol("chevron.up")
     )
+
+    /// Extra sets offered by Fold's compact settings, ahead of Thaw's own.
+    static let foldIcons = [
+        defaultIceIcon,
+        ControlItemImageSet(name: .foldCircle, hidden: .symbol("chevron.down.circle"), visible: .symbol("chevron.up.circle.fill")),
+        ControlItemImageSet(name: .foldLines, hidden: .symbol("line.3.horizontal"), visible: .symbol("line.3.horizontal.decrease")),
+        ControlItemImageSet(name: .foldGrid, hidden: .symbol("square.grid.2x2"), visible: .symbol("square.grid.2x2.fill")),
+        ControlItemImageSet(name: .foldSparkle, hidden: .symbol("sparkle"), visible: .symbol("sparkles")),
+        ControlItemImageSet(name: .foldTray, hidden: .symbol("tray"), visible: .symbol("tray.full")),
+        ControlItemImageSet(name: .foldCapsule, hidden: .symbol("capsule"), visible: .symbol("capsule.fill")),
+    ]
 
     /// The image sets that the user can choose to display in the Ice icon.
     static let userSelectableIceIcons = [
