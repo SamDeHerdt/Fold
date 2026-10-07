@@ -343,7 +343,8 @@ private struct FoldPreview: View {
             progress: progress,
             anchorX: anchorX,
             motion: FoldMotion(rawValue: motionRaw) ?? .liquid,
-            pourCenterY: pourCenterY
+            pourCenterY: pourCenterY,
+            slotCount: images.count
         ))
     }
 }

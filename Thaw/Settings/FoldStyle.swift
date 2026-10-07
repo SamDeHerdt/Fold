@@ -37,13 +37,27 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Hidden debug knob: `defaults write com.samdeherdt.fold FoldMotionDebugSlowdown 6`
+    /// plays every open/close six times slower, for frame-by-frame review.
+    static var debugSlowdown: Double {
+        max(1, UserDefaults.standard.double(forKey: "FoldMotionDebugSlowdown"))
+    }
+
     static var current: FoldMotion {
         FoldMotion(rawValue: UserDefaults.standard.string(forKey: FoldKey.motion) ?? "") ?? .liquid
     }
 
     var openAnimation: Animation? {
+        baseOpenAnimation?.speed(1 / Self.debugSlowdown)
+    }
+
+    var closeAnimation: Animation? {
+        baseCloseAnimation?.speed(1 / Self.debugSlowdown)
+    }
+
+    private var baseOpenAnimation: Animation? {
         switch self {
-        case .liquid: .spring(duration: 0.55, bounce: 0.25)
+        case .liquid: .spring(duration: 0.75, bounce: 0.22)
         case .unfold: .spring(duration: 0.35, bounce: 0.3)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.25)
         case .fade: .easeOut(duration: 0.15)
@@ -51,9 +65,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         }
     }
 
-    var closeAnimation: Animation? {
+    private var baseCloseAnimation: Animation? {
         switch self {
-        case .liquid: .timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
+        case .liquid: .timingCurve(0.22, 1, 0.36, 1, duration: 0.35)
         case .unfold: .timingCurve(0.22, 1, 0.36, 1, duration: 0.22)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.15)
         case .fade: .easeIn(duration: 0.12)
@@ -63,8 +77,12 @@ enum FoldMotion: String, CaseIterable, Identifiable {
 
     /// How long the panel stays up after a close starts, matching `closeAnimation`.
     var closeDelay: TimeInterval {
+        baseCloseDelay * Self.debugSlowdown
+    }
+
+    private var baseCloseDelay: TimeInterval {
         switch self {
-        case .liquid: 0.3
+        case .liquid: 0.35
         case .unfold: 0.22
         case .drop: 0.15
         case .fade: 0.12
@@ -183,6 +201,8 @@ struct FoldMorphReveal: ViewModifier {
     let anchorX: CGFloat?
     let motion: FoldMotion
     let pourCenterY: CGFloat
+    /// Icons in the bar; Liquid bursts one goo ball out per icon.
+    var slotCount: Int = 7
 
     private static let seed = CGSize(width: 30, height: 22)
 
@@ -197,7 +217,8 @@ struct FoldMorphReveal: ViewModifier {
         let p: CGFloat = max(progress, 0)
         let isLiquid = motion == .liquid
         // Liquid: the droplet falls from the button first, then stretches.
-        let grow: CGFloat = isLiquid ? Self.unit((p - 0.3) / 0.7) : Self.unit(p)
+        // Liquid: full width by 0.85 so it matches the goo before the hand-off.
+        let grow: CGFloat = isLiquid ? Self.unit((p - 0.3) / 0.55) : Self.unit(p)
         let fall: CGFloat = isLiquid ? Self.unit(p / 0.45) : 1
         let seedTop: CGFloat = isLiquid ? pourCenterY - Self.seed.height / 2 : 0
         let width: CGFloat = min(size.width, Self.seed.width + (size.width - Self.seed.width) * grow)
@@ -207,40 +228,78 @@ struct FoldMorphReveal: ViewModifier {
         return CGRect(x: x, y: seedTop * (1 - fall), width: width, height: height)
     }
 
-    /// Goo silhouettes for the liquid pour, in the bar's coordinates: a blob
-    /// on the button, the falling bar, and droplets strung between them. A
-    /// blur + alpha threshold melts them together (transitions.dev gooey).
-    private func gooBlobs(in size: CGSize, bar: CGRect) -> [CGRect] {
+    /// Goo silhouettes for the liquid pour, in the bar's coordinates, after
+    /// gooey-react: a blob swells on the button, a drop stretches out of it and
+    /// falls, then one ball per icon bursts sideways out of the drop (staggered)
+    /// and the row fuses into the bar. Blur + alpha threshold supplies the necks.
+    private func gooBlobs(in size: CGSize, bar _: CGRect) -> [CGRect] {
         let p: CGFloat = max(progress, 0)
         let anchor: CGFloat = anchorX ?? size.width / 2
-        var blobs = [bar]
-        let buttonScale: CGFloat = 1 - Self.unit((p - 0.5) / 0.4)
-        if buttonScale > 0.02 {
-            let w: CGFloat = Self.seed.width * buttonScale
-            let h: CGFloat = Self.seed.height * buttonScale
-            blobs.append(CGRect(x: anchor - w / 2, y: pourCenterY - h / 2, width: w, height: h))
+        let h: CGFloat = size.height
+        let inflate: CGFloat = Self.gooBlur * 0.45 // threshold erodes edges; pre-grow
+        var blobs: [CGRect] = []
+
+        func circle(_ x: CGFloat, _ y: CGFloat, _ d: CGFloat) -> CGRect {
+            let dd = max(0, d + inflate * 2)
+            return CGRect(x: x - dd / 2, y: y - dd / 2, width: dd, height: dd)
         }
-        let dropScale: CGFloat = Self.unit(p / 0.15) * (1 - Self.unit((p - 0.35) / 0.45))
-        if dropScale > 0.02 {
-            let gapTop: CGFloat = pourCenterY
-            let gapBottom: CGFloat = bar.midY
-            for fraction: CGFloat in [0.36, 0.68] {
-                let d: CGFloat = 13 * dropScale
-                let y: CGFloat = gapTop + (gapBottom - gapTop) * fraction
-                blobs.append(CGRect(x: anchor - d / 2, y: y - d / 2, width: d, height: d))
-            }
+        func ease(_ t: CGFloat) -> CGFloat {
+            let u = Self.unit(t)
+            return 1 - pow(1 - u, 3)
+        }
+
+        // 1. Button blob: swells, then drains into the drop.
+        let swell: CGFloat = Self.unit(p / 0.12)
+        let drain: CGFloat = Self.unit((p - 0.22) / 0.33)
+        let buttonD: CGFloat = Self.seed.height * (0.9 + 0.35 * swell) * (1 - drain)
+        if buttonD > 1 { blobs.append(circle(anchor, pourCenterY, buttonD)) }
+
+        // 2. The drop: stretches out of the blob and falls to the bar's centre.
+        let fall: CGFloat = ease((p - 0.06) / 0.34)
+        let dropY: CGFloat = pourCenterY + (h / 2 - pourCenterY) * fall
+        let dropD: CGFloat = (h - inflate * 2) * (0.6 + 0.4 * fall)
+        if p > 0.04 { blobs.append(circle(anchor, dropY, dropD)) }
+
+        // 3. Burst: one ball per icon flies from the drop to its slot.
+        let count = min(max(slotCount, 3), 14)
+        let span: CGFloat = max(0, size.width - h)
+        let slots: [CGFloat] = (0 ..< count).map { i in
+            count == 1 ? size.width / 2 : h / 2 + span * CGFloat(i) / CGFloat(count - 1)
+        }
+        let order = slots.indices.sorted { abs(slots[$0] - anchor) < abs(slots[$1] - anchor) }
+        for (rank, index) in order.enumerated() {
+            let start: CGFloat = 0.32 + CGFloat(rank) * 0.035
+            let t: CGFloat = ease((p - start) / 0.42)
+            guard t > 0 else { continue }
+            let x: CGFloat = anchor + (slots[index] - anchor) * t
+            // Ends exactly bar-high once the threshold's pre-grow is added.
+            blobs.append(circle(x, h / 2, (h - inflate * 2) * (0.6 + 0.4 * t)))
+        }
+
+        // 4. Fuse: a capsule grows over the row and smooths the bumps.
+        let fuse: CGFloat = ease((p - 0.72) / 0.28)
+        if fuse > 0 {
+            let w: CGFloat = h + (size.width - h) * fuse
+            let x: CGFloat = min(max(anchor - w / 2, 0), size.width - w)
+            blobs.append(CGRect(x: x, y: 0, width: w, height: h))
         }
         return blobs
     }
 
+    /// The real capsule fades in underneath before the goo fades off the top,
+    /// so the hand-off never shows two half-transparent layers.
+    private var capsuleOpacity: Double {
+        motion == .liquid ? Double(Self.unit((progress - 0.8) / 0.08)) : 1
+    }
+
     /// Goo while pouring, the real capsule once settled (keeps the glass rim).
     private var gooAmount: Double {
-        motion == .liquid ? Double(1 - Self.unit((progress - 0.82) / 0.16)) : 0
+        motion == .liquid ? Double(1 - Self.unit((progress - 0.9) / 0.1)) : 0
     }
 
     private var contentOpacity: Double {
         switch motion {
-        case .liquid: Double(Self.unit((progress - 0.45) / 0.45))
+        case .liquid: Double(Self.unit((progress - 0.6) / 0.3))
         case .unfold: Double(Self.unit((progress - 0.25) / 0.6))
         case .drop, .fade: Double(Self.unit(progress))
         case .none: 1
@@ -279,7 +338,9 @@ struct FoldMorphReveal: ViewModifier {
             .offset(y: dropOffset)
     }
 
-    private static let gooBlur: CGFloat = 6
+    /// gooey-react's "medium" is a 12 px blur at 100 px-scale shapes; the bar is
+    /// ~37 pt tall, so scale it to keep the same neck-to-body proportion.
+    private static let gooBlur: CGFloat = 8
     private static let gooPadding: CGFloat = 24
 
     private func surface(in size: CGSize) -> some View {
@@ -289,7 +350,7 @@ struct FoldMorphReveal: ViewModifier {
                 .frame(width: bar.width, height: bar.height)
                 .modifier(FoldSurface(shape: Capsule()))
                 .position(x: bar.midX, y: bar.midY)
-                .opacity(1 - gooAmount)
+                .opacity(capsuleOpacity)
             if gooAmount > 0 {
                 gooSurface(in: size, bar: bar)
                     .opacity(gooAmount)

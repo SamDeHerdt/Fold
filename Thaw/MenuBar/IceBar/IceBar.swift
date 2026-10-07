@@ -675,7 +675,7 @@ private struct IceBarContentView: View {
             .padding(.vertical, verticalPadding)
             .foregroundStyle(foldColorScheme == .dark ? .white : .black)
             .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
-            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY))
+            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count))
 
             if configuration.current.borderOnThawBar {
                 clipShape
