@@ -30,6 +30,8 @@ final class MenuBarSection {
     /// on the current active display.
     private var useIceBar: Bool {
         guard let appState else { return false }
+        // Fold is a drawer only; it never expands hidden items inline.
+        if Constants.bundleIdentifier == "com.samdeherdt.fold" { return true }
         let screen = screenForIceBar
         let displayID = screen?.displayID ?? CGMainDisplayID()
         let displaySettings = appState.settings.displaySettings

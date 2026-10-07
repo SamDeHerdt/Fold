@@ -64,13 +64,26 @@ final class IceBarPanel: NSPanel {
     private func startFoldHoverWatch() {
         foldHoverTask?.cancel()
         foldPointerOutsideSince = nil
-        guard appState?.settings.general.showOnHover == true else { return }
+        let closesOnLeave = appState?.settings.general.showOnHover == true
         foldHoverTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                checkFoldHover()
+                updateFoldPassThrough()
+                if closesOnLeave { checkFoldHover() }
                 try? await Task.sleep(for: .milliseconds(100))
             }
+        }
+    }
+
+    /// The liquid pour makes the panel reach up over the menu bar, covering the
+    /// chevron. While the pointer is in that strip, let clicks fall through so
+    /// the chevron still gets its left and right clicks.
+    private func updateFoldPassThrough() {
+        guard isVisible, let screen = shownScreen ?? screen else { return }
+        let menuBarBottom = screen.frame.maxY - screen.getMenuBarHeightEstimate()
+        let overStrip = FoldPointer.location.y >= menuBarBottom
+        if ignoresMouseEvents != overStrip, foldMorph.isOpen {
+            ignoresMouseEvents = overStrip
         }
     }
 
@@ -544,8 +557,8 @@ private struct IceBarContentView: View {
         FoldWidth.cap(stored: foldMaxWidth, screenWidth: screen.frame.width)
     }
 
-    /// Where the chevron sits along the bar, so the drawer grows out of it.
-    /// Mirrors IceBarPanel's icon-anchored origin; nil falls back to centre.
+    /// Where the chevron sits, in the drawer window's coordinates, so the
+    /// drawer grows out of it. Mirrors IceBarPanel's icon-anchored origin.
     private var morphAnchorX: CGFloat? {
         guard
             layout == .horizontal,
@@ -555,7 +568,7 @@ private struct IceBarContentView: View {
         let panelWidth = compactWidth
         let upper = max(screen.frame.minX, screen.frame.maxX - panelWidth)
         let panelX = (itemBounds.midX - panelWidth / 2).clamped(to: screen.frame.minX ... upper)
-        return itemBounds.midX - panelX - 5
+        return itemBounds.midX - panelX
     }
 
     private var motion: FoldMotion {
@@ -675,7 +688,7 @@ private struct IceBarContentView: View {
             .padding(.vertical, verticalPadding)
             .foregroundStyle(foldColorScheme == .dark ? .white : .black)
             .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
-            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count))
+            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count, anchorInWindow: true))
 
             if configuration.current.borderOnThawBar {
                 clipShape

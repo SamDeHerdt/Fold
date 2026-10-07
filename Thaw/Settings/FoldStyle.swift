@@ -195,14 +195,34 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
 /// Reveals a bar with the chosen motion. `anchorX` is the menu-bar button's
 /// centre along the bar and `pourCenterY` its centre above the bar (negative),
 /// both in the bar's own coordinates.
-struct FoldMorphReveal: ViewModifier {
+struct FoldMorphReveal: ViewModifier, Animatable {
     /// 0 = folded into the button, 1 = fully open.
-    let progress: CGFloat
-    let anchorX: CGFloat?
+    var progress: CGFloat
+
+    /// Without this SwiftUI only tweens the frames this modifier produces; the
+    /// goo Canvas would get the final progress at once and never play.
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+    var anchorX: CGFloat?
     let motion: FoldMotion
     let pourCenterY: CGFloat
     /// Icons in the bar; Liquid bursts one goo ball out per icon.
     var slotCount: Int = 7
+    /// When true, `anchorX` is in window coordinates and is converted to the
+    /// bar's own space at draw time (the bar's real position can differ from
+    /// any estimate, e.g. when icon widths differ from their cached sizes).
+    var anchorInWindow = false
+
+    /// This modifier with `anchorX` resolved into the geometry's local space.
+    private func local(_ geometry: GeometryProxy) -> FoldMorphReveal {
+        guard anchorInWindow, let anchorX else { return self }
+        var copy = self
+        copy.anchorX = anchorX - geometry.frame(in: .global).minX
+        copy.anchorInWindow = false
+        return copy
+    }
 
     private static let seed = CGSize(width: 30, height: 22)
 
@@ -324,7 +344,7 @@ struct FoldMorphReveal: ViewModifier {
             .blur(radius: contentBlur)
             .mask(alignment: .topLeading) {
                 GeometryReader { geometry in
-                    let r = barRect(in: geometry.size)
+                    let r = local(geometry).barRect(in: geometry.size)
                     Capsule()
                         .frame(width: r.width, height: r.height)
                         .position(x: r.midX, y: r.midY)
@@ -332,7 +352,7 @@ struct FoldMorphReveal: ViewModifier {
             }
             .background(alignment: .topLeading) {
                 GeometryReader { geometry in
-                    surface(in: geometry.size)
+                    local(geometry).surface(in: geometry.size)
                 }
             }
             .offset(y: dropOffset)
