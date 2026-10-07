@@ -19,6 +19,8 @@ enum FoldKey {
     static let hoverDelay = "FoldHoverDelayV1"
     /// Extra points between icons inside the drawer (drawer only).
     static let iconSpacing = "FoldIconSpacingV1"
+    /// Icon size inside the drawer, as a multiple of the menu bar's (0.7–1.4).
+    static let iconScale = "FoldIconScaleV1"
 
     static var hoverDelaySeconds: Double {
         UserDefaults.standard.object(forKey: hoverDelay) as? Double ?? 0.18

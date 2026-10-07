@@ -39,12 +39,15 @@ struct SettingsWindow: Scene {
                     .environment(appState.permissions)
                     .frame(width: ThawOnboardingWindowMetrics.width, height: ThawOnboardingWindowMetrics.height)
                 }
-                .frame(minWidth: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 440 : 850,
-                       minHeight: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 340 : 600)
+                .frame(minWidth: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 560 : 850,
+                       minHeight: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 660 : 600)
         }
         .windowResizability(.contentSize)
-        .defaultSize(width: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 440 : 950,
-                     height: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 340 : 650)
+        // Fold's window is exactly its content size and opens centred, so it
+        // never appears at a stale size and then jumps.
+        .defaultSize(width: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 560 : 950,
+                     height: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 660 : 650)
+        .defaultPosition(.center)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
         .environment(appState)

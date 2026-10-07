@@ -506,6 +506,7 @@ private struct IceBarContentView: View {
     @AppStorage(FoldKey.look) private var foldLook = FoldLook.glass.rawValue
     @AppStorage(FoldKey.motion) private var foldMotion = FoldMotion.liquid.rawValue
     @AppStorage(FoldKey.iconSpacing) private var foldIconSpacing = 0.0
+    @AppStorage(FoldKey.iconScale) private var foldIconScale = 1.0
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var morphProgress: CGFloat = 0
@@ -620,8 +621,13 @@ private struct IceBarContentView: View {
         2
     }
 
+    /// Fold's icon-size setting; the bar grows with its icons.
+    private var foldScale: CGFloat {
+        Constants.bundleIdentifier == "com.samdeherdt.fold" ? CGFloat(min(max(foldIconScale, 0.7), 1.4)) : 1
+    }
+
     private var contentHeight: CGFloat {
-        let menuBarHeight = screen.getMenuBarHeightEstimate()
+        let menuBarHeight = screen.getMenuBarHeightEstimate() * foldScale
         if configuration.shapeKind != .noShape, configuration.isInset, screen.hasNotch {
             return menuBarHeight - appState.appearanceManager.menuBarInsetAmount * 2
         }
@@ -632,7 +638,7 @@ private struct IceBarContentView: View {
         // Use the raw menu bar height so icons match their native size,
         // regardless of any inset or padding applied to the bar shape.
         // The clip shape trims any overflow.
-        let menuBarHeight = screen.getMenuBarHeightEstimate()
+        let menuBarHeight = screen.getMenuBarHeightEstimate() * foldScale
         return menuBarHeight > 0 ? menuBarHeight : nil
     }
 

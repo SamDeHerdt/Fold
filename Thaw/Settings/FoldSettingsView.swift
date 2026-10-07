@@ -42,6 +42,7 @@ struct FoldSettingsContent: View {
     @AppStorage(FoldKey.motion) private var motion = FoldMotion.liquid.rawValue
     @AppStorage(FoldKey.hoverDelay) private var hoverDelay = 0.18
     @AppStorage(FoldKey.iconSpacing) private var iconSpacing = 0.0
+    @AppStorage(FoldKey.iconScale) private var iconScale = 1.0
     @AppStorage("FoldSettingsTabV1") private var tab = FoldSettingsTab.look
     @State private var isArranging = false
     @State private var window: NSWindow?
@@ -60,7 +61,7 @@ struct FoldSettingsContent: View {
 
     /// Anything that changes how the drawer looks or moves replays the preview.
     private var previewSignature: String {
-        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(general.iceIcon.name.rawValue)"
+        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(general.iceIcon.name.rawValue)"
     }
 
     var body: some View {
@@ -78,6 +79,7 @@ struct FoldSettingsContent: View {
                     icon: general.iceIcon,
                     cap: FoldWidth.cap(stored: maxWidth, screenWidth: screenWidth),
                     spacing: iconSpacing,
+                    iconScale: iconScale,
                     replay: replay
                 ) {
                     replay += 1
@@ -180,6 +182,16 @@ struct FoldSettingsContent: View {
             LabeledContent("Length") {
                 Slider(value: lengthBinding, in: Double(FoldWidth.minimum) ... Double(screenCap))
                     .frame(width: 240)
+            }
+            LabeledContent("Icon size") {
+                HStack {
+                    Slider(value: $iconScale, in: 0.7 ... 1.4, step: 0.05)
+                        .frame(width: 180)
+                    Text("\(Int((iconScale * 100).rounded()))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 52, alignment: .trailing)
+                }
             }
             LabeledContent("Icon spacing") {
                 Slider(value: $iconSpacing, in: 0 ... 16, step: 1)
@@ -466,6 +478,7 @@ private struct FoldPreview: View {
     let icon: ControlItemImageSet
     let cap: CGFloat
     let spacing: Double
+    let iconScale: Double
     let replay: Int
     let onReplay: () -> Void
     @AppStorage(FoldKey.appearance) private var appearance = "dark"
@@ -475,9 +488,12 @@ private struct FoldPreview: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: CGFloat = 1
 
-    private static let iconHeight: CGFloat = 22
+    private static let baseIconHeight: CGFloat = 22
     private static let padding: CGFloat = 13
-    private static let barHeight: CGFloat = 30
+    private static let baseBarHeight: CGFloat = 30
+
+    private var iconHeight: CGFloat { Self.baseIconHeight * CGFloat(iconScale) }
+    private var barHeight: CGFloat { Self.baseBarHeight * CGFloat(iconScale) }
     private static let canvas = CGSize(width: 528, height: 150)
     private static let menuBarHeight: CGFloat = 24
 
@@ -523,8 +539,8 @@ private struct FoldPreview: View {
     }
 
     private func width(of image: NSImage) -> CGFloat {
-        guard image.size.height > 0 else { return Self.iconHeight }
-        return image.size.width * Self.iconHeight / image.size.height
+        guard image.size.height > 0 else { return iconHeight }
+        return image.size.width * iconHeight / image.size.height
     }
 
     private var naturalWidth: CGFloat {
@@ -553,7 +569,7 @@ private struct FoldPreview: View {
         let chevronX: CGFloat = Self.canvas.width * 0.7
         let barX: CGFloat = min(max(chevronX - barWidth / 2, 12), Self.canvas.width - barWidth - 12)
         let barY: CGFloat = Self.menuBarHeight + 6
-        let scaledBarHeight: CGFloat = Self.barHeight * scale
+        let scaledBarHeight: CGFloat = barHeight * scale
         let caption: String = images.count > visibleCount ? "\(visibleCount) of \(images.count) icons · rest scroll" : "\(images.count) icons"
 
         ZStack(alignment: .topLeading) {
@@ -570,7 +586,7 @@ private struct FoldPreview: View {
                     .position(x: chevronX, y: Self.menuBarHeight / 2)
             }
             bar(anchorX: (chevronX - barX) / scale, pourCenterY: (Self.menuBarHeight / 2 - barY) / scale)
-                .frame(width: realWidth, height: Self.barHeight)
+                .frame(width: realWidth, height: barHeight)
                 .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: barWidth, height: scaledBarHeight, alignment: .topLeading)
                 .offset(x: barX, y: barY)
@@ -615,12 +631,12 @@ private struct FoldPreview: View {
                 Image(nsImage: image)
                     .renderingMode(.template)
                     .resizable()
-                    .frame(width: width(of: image), height: Self.iconHeight)
+                    .frame(width: width(of: image), height: iconHeight)
             }
         }
         .foregroundStyle(iconColor)
         .padding(.horizontal, Self.padding)
-        .frame(width: realWidth, height: Self.barHeight, alignment: .trailing)
+        .frame(width: realWidth, height: barHeight, alignment: .trailing)
         .clipped()
         .shadow(color: lookValue == .minimal ? .black.opacity(0.45) : .clear, radius: 2)
         .modifier(FoldMorphReveal(
