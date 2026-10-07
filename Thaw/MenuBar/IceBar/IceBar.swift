@@ -70,7 +70,7 @@ final class IceBarPanel: NSPanel {
                 guard let self else { return }
                 updateFoldPassThrough()
                 if closesOnLeave { checkFoldHover() }
-                try? await Task.sleep(for: .milliseconds(100))
+                try? await Task.sleep(for: .milliseconds(50))
             }
         }
     }
@@ -79,7 +79,7 @@ final class IceBarPanel: NSPanel {
     /// chevron. While the pointer is in that strip, let clicks fall through so
     /// the chevron still gets its left and right clicks.
     private func updateFoldPassThrough() {
-        guard isVisible, let screen = shownScreen ?? screen else { return }
+        guard let screen = shownScreen ?? screen else { return }
         let menuBarBottom = screen.frame.maxY - screen.getMenuBarHeightEstimate()
         let overStrip = FoldPointer.location.y >= menuBarBottom
         if ignoresMouseEvents != overStrip, foldMorph.isOpen {
@@ -323,6 +323,9 @@ final class IceBarPanel: NSPanel {
         if Constants.bundleIdentifier == "com.samdeherdt.fold" {
             applyFoldAppearance()
             startFoldHoverWatch()
+            // Pass clicks through to the icon from the first frame, not the
+            // first watch tick, so a quick right-click never hits the drawer.
+            updateFoldPassThrough()
         }
         appState.navigationState.isIceBarPresented = true
         currentSection = section

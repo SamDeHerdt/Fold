@@ -226,6 +226,7 @@ final class ControlItem {
     private var foldHoverTask: Task<Void, Never>?
     private var foldHoverSince: Date?
     private var foldHoverArmed = true
+    private var foldHoverSuppressedUntil = Date.distantPast
 
     deinit {
         foldHoverTask?.cancel()
@@ -695,6 +696,10 @@ final class ControlItem {
         menu.addItem(.separator())
 
         menu.addItem(item("Arrange Icons…", "square.grid.3x1.below.line.grid.1x2", #selector(foldArrange)))
+        let updates = NSMenuItem(title: "Check for Updates…", action: #selector(UpdatesManager.checkForUpdates), keyEquivalent: "")
+        updates.target = appState.updatesManager
+        updates.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        menu.addItem(updates)
         let settings = NSMenuItem(title: "Settings…", action: #selector(AppDelegate.openSettingsWindow), keyEquivalent: ",")
         settings.keyEquivalentModifierMask = .command
         settings.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
@@ -754,7 +759,7 @@ final class ControlItem {
             foldHoverSince = nil
             return
         }
-        guard foldHoverArmed, !isFoldEngaged, NSEvent.pressedMouseButtons == 0 else {
+        guard foldHoverArmed, !isFoldEngaged, NSEvent.pressedMouseButtons == 0, Date.now > foldHoverSuppressedUntil else {
             foldHoverSince = nil
             return
         }
@@ -1091,6 +1096,9 @@ final class ControlItem {
                 }
             }
         case .rightMouseUp:
+            // Don't let hover pop the drawer open around a right-click.
+            foldHoverArmed = false
+            foldHoverSuppressedUntil = .now.addingTimeInterval(1)
             showMenu()
         default:
             return

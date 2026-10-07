@@ -21,3 +21,7 @@ plans/
 # Local badge mockups
 .tmp-badge-preview/
 default.profraw
+
+# Fold build output
+/dist/
+/.build-fold/

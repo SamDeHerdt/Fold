@@ -285,6 +285,33 @@ struct FoldSettingsContent: View {
                 : "Click the menu-bar icon to open. Right-click it for settings.")
                 .foregroundStyle(.secondary)
         }
+        updatesSection
+    }
+
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
+    @ViewBuilder
+    private var updatesSection: some View {
+        @Bindable var updates = appState.updatesManager
+        Section {
+            Toggle("Check for updates automatically", isOn: $updates.automaticallyChecksForUpdates)
+            LabeledContent("Version") {
+                HStack {
+                    Text(appVersion).foregroundStyle(.secondary).monospacedDigit()
+                    Button("Check Now") { appState.updatesManager.checkForUpdates() }
+                }
+            }
+        } header: {
+            Text("Updates")
+        } footer: {
+            Text("New versions come from github.com/SamDeHerdt/Fold and are verified with Fold's signing key before they install.")
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder

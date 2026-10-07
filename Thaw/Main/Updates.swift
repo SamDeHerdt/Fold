@@ -165,8 +165,8 @@ final class UpdatesManager: NSObject {
 
     /// Starts the updater if it hasn't been started yet.
     func startUpdaterIfNeeded() {
-        // Local Fold builds must not replace themselves with upstream Thaw releases.
-        guard Constants.bundleIdentifier != "com.samdeherdt.fold" else { return }
+        // Fold updates from its own feed (SamDeHerdt/Fold releases, see
+        // SUFeedURL), signed with Fold's own EdDSA key — never Thaw's.
         guard !hasStartedUpdater else {
             return
         }
@@ -196,7 +196,6 @@ final class UpdatesManager: NSObject {
 
     /// Checks for app updates.
     @objc func checkForUpdates() {
-        guard Constants.bundleIdentifier != "com.samdeherdt.fold" else { return }
         #if DEBUG
             // Checking for updates hangs in debug mode.
             let alert = NSAlert()
@@ -209,7 +208,9 @@ final class UpdatesManager: NSObject {
             startUpdaterIfNeeded()
             // Activate the app in case an alert needs to be displayed.
             appState.activate(withPolicy: .regular)
-            appState.openWindow(.settings)
+            if Constants.bundleIdentifier != "com.samdeherdt.fold" {
+                appState.openWindow(.settings)
+            }
             updater.checkForUpdates()
         #endif
     }

@@ -124,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isFirstLaunch || appState.permissions.permissionsState == .missing {
             appState.openWindow(.permissions)
         }
+        // Fold checks its GitHub releases in the background from launch,
+        // not only once settings has been opened.
+        if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            appState.startUpdaterIfNeeded()
+        }
     }
 
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
