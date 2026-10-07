@@ -1405,6 +1405,11 @@ extension HIDEventManager {
     // MARK: Handle Show On Hover
 
     private func handleShowOnHover(appState: AppState, screen: NSScreen) {
+        // Fold opens on hovering its chevron and closes on leaving the drawer
+        // (ControlItem / IceBarPanel); Thaw's empty-space hover would fight it.
+        guard Constants.bundleIdentifier != "com.samdeherdt.fold" else {
+            return
+        }
         // Make sure the "ShowOnHover" feature is enabled and allowed.
         guard
             appState.settings.general.showOnHover,

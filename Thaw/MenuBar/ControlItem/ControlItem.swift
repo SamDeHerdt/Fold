@@ -221,7 +221,14 @@ final class ControlItem {
     private var latestFoldEngaged = false
     private var foldEngagedObservationTask: Task<Void, Never>?
 
+    /// Fold: opens the drawer when the pointer rests on the chevron, whichever
+    /// app is active. Re-arms only after the pointer leaves the chevron.
+    private var foldHoverTask: Task<Void, Never>?
+    private var foldHoverSince: Date?
+    private var foldHoverArmed = true
+
     deinit {
+        foldHoverTask?.cancel()
         foldEngagedObservationTask?.cancel()
         showIceIconObservationTask?.cancel()
         iceIconObservationTask?.cancel()
@@ -597,6 +604,16 @@ final class ControlItem {
     /// stays visually joined to whatever it opened.
     private func configureFoldEngagedObservation(appState: AppState) {
         guard identifier == .visible, Constants.bundleIdentifier == "com.samdeherdt.fold" else { return }
+        foldHoverTask?.cancel()
+        foldHoverTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                checkFoldChevronHover()
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+        }
+        diagLog.notice("Fold chevron hover watch started")
+
         foldEngagedObservationTask?.cancel()
         foldEngagedObservationTask = Task { @MainActor [weak self, navigationState = appState.navigationState, itemManager = appState.itemManager] in
             let changes = Observations {
@@ -619,7 +636,44 @@ final class ControlItem {
         }
     }
 
+    private func checkFoldChevronHover() {
+        let pointer = FoldPointer.location
+        guard
+            let appState,
+            appState.settings.general.showOnHover,
+            let frame = window?.frame,
+            let section = appState.menuBarManager.section(withName: .hidden)
+        else {
+            foldHoverSince = nil
+            return
+        }
+        guard frame.insetBy(dx: -2, dy: -2).contains(pointer) else {
+            foldHoverArmed = true
+            foldHoverSince = nil
+            return
+        }
+        guard foldHoverArmed, !isFoldEngaged, NSEvent.pressedMouseButtons == 0 else {
+            foldHoverSince = nil
+            return
+        }
+        if let since = foldHoverSince {
+            if Date.now.timeIntervalSince(since) > 0.18 {
+                foldHoverArmed = false
+                foldHoverSince = nil
+                diagLog.notice("Fold hover over chevron: opening drawer")
+                section.show()
+            }
+        } else {
+            foldHoverSince = .now
+        }
+    }
+
     private func setFoldEngaged(_ engaged: Bool) {
+        if engaged {
+            // Opened by click or hover: wait for the pointer to leave before
+            // hover may open it again, so closing it doesn't bounce back open.
+            foldHoverArmed = false
+        }
         guard engaged != isFoldEngaged else { return }
         isFoldEngaged = engaged
         updateStatusItem()

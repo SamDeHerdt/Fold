@@ -116,6 +116,17 @@ enum FoldWidth {
     }
 }
 
+/// The pointer in AppKit screen coordinates, read straight from the window
+/// server. `NSEvent.mouseLocation` can lag in a background app that isn't
+/// receiving mouse events.
+enum FoldPointer {
+    static var location: NSPoint {
+        guard let cg = CGEvent(source: nil)?.location else { return NSEvent.mouseLocation }
+        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 0
+        return NSPoint(x: cg.x, y: primaryHeight - cg.y)
+    }
+}
+
 /// Open/closed state shared by the drawer panel and its SwiftUI content, so
 /// the panel can let the content morph back into the chevron before it hides.
 @Observable
@@ -196,17 +207,35 @@ struct FoldMorphReveal: ViewModifier {
         return CGRect(x: x, y: seedTop * (1 - fall), width: width, height: height)
     }
 
-    /// The liquid neck from the button to the falling droplet; it thins away.
-    private func stemRect(in size: CGSize, bar: CGRect) -> CGRect? {
-        guard motion == .liquid else { return nil }
-        let thickness: CGFloat = 1 - Self.unit((progress - 0.35) / 0.5)
-        guard thickness > 0.02 else { return nil }
+    /// Goo silhouettes for the liquid pour, in the bar's coordinates: a blob
+    /// on the button, the falling bar, and droplets strung between them. A
+    /// blur + alpha threshold melts them together (transitions.dev gooey).
+    private func gooBlobs(in size: CGSize, bar: CGRect) -> [CGRect] {
+        let p: CGFloat = max(progress, 0)
         let anchor: CGFloat = anchorX ?? size.width / 2
-        let width: CGFloat = Self.seed.width * 0.6 * thickness
-        let top: CGFloat = pourCenterY - Self.seed.height / 2 * thickness
-        let bottom: CGFloat = bar.midY
-        guard bottom > top else { return nil }
-        return CGRect(x: anchor - width / 2, y: top, width: width, height: bottom - top)
+        var blobs = [bar]
+        let buttonScale: CGFloat = 1 - Self.unit((p - 0.5) / 0.4)
+        if buttonScale > 0.02 {
+            let w: CGFloat = Self.seed.width * buttonScale
+            let h: CGFloat = Self.seed.height * buttonScale
+            blobs.append(CGRect(x: anchor - w / 2, y: pourCenterY - h / 2, width: w, height: h))
+        }
+        let dropScale: CGFloat = Self.unit(p / 0.15) * (1 - Self.unit((p - 0.35) / 0.45))
+        if dropScale > 0.02 {
+            let gapTop: CGFloat = pourCenterY
+            let gapBottom: CGFloat = bar.midY
+            for fraction: CGFloat in [0.36, 0.68] {
+                let d: CGFloat = 13 * dropScale
+                let y: CGFloat = gapTop + (gapBottom - gapTop) * fraction
+                blobs.append(CGRect(x: anchor - d / 2, y: y - d / 2, width: d, height: d))
+            }
+        }
+        return blobs
+    }
+
+    /// Goo while pouring, the real capsule once settled (keeps the glass rim).
+    private var gooAmount: Double {
+        motion == .liquid ? Double(1 - Self.unit((progress - 0.82) / 0.16)) : 0
     }
 
     private var contentOpacity: Double {
@@ -250,24 +279,46 @@ struct FoldMorphReveal: ViewModifier {
             .offset(y: dropOffset)
     }
 
+    private static let gooBlur: CGFloat = 6
+    private static let gooPadding: CGFloat = 24
+
     private func surface(in size: CGSize) -> some View {
         let bar = barRect(in: size)
-        let stem = stemRect(in: size, bar: bar)
-        return GlassEffectContainer(spacing: 14) {
-            ZStack(alignment: .topLeading) {
-                if let stem {
-                    Color.clear
-                        .frame(width: stem.width, height: stem.height)
-                        .modifier(FoldSurface(shape: Capsule()))
-                        .position(x: stem.midX, y: stem.midY)
-                }
-                Color.clear
-                    .frame(width: bar.width, height: bar.height)
-                    .modifier(FoldSurface(shape: Capsule()))
-                    .position(x: bar.midX, y: bar.midY)
+        return ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(width: bar.width, height: bar.height)
+                .modifier(FoldSurface(shape: Capsule()))
+                .position(x: bar.midX, y: bar.midY)
+                .opacity(1 - gooAmount)
+            if gooAmount > 0 {
+                gooSurface(in: size, bar: bar)
+                    .opacity(gooAmount)
             }
-            .frame(width: size.width, height: size.height, alignment: .topLeading)
         }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
         .opacity(surfaceOpacity)
+    }
+
+    private func gooSurface(in size: CGSize, bar: CGRect) -> some View {
+        let pad = Self.gooPadding
+        let top: CGFloat = min(0, pourCenterY - Self.seed.height) - pad
+        let canvas = CGRect(x: -pad, y: top, width: size.width + pad * 2, height: size.height + pad - top)
+        let blobs = gooBlobs(in: size, bar: bar)
+        return Color.clear
+            .frame(width: canvas.width, height: canvas.height)
+            .modifier(FoldSurface(shape: Rectangle()))
+            .mask {
+                Canvas { context, _ in
+                    context.addFilter(.alphaThreshold(min: 0.5))
+                    context.addFilter(.blur(radius: Self.gooBlur))
+                    context.drawLayer { layer in
+                        for blob in blobs {
+                            let local = blob.offsetBy(dx: -canvas.minX, dy: -canvas.minY)
+                            layer.fill(Capsule().path(in: local), with: .color(.black))
+                        }
+                    }
+                }
+            }
+            .position(x: canvas.midX, y: canvas.midY)
     }
 }

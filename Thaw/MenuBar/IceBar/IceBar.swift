@@ -42,9 +42,11 @@ final class IceBarPanel: NSPanel {
 
     /// Fold: lets the content fold back into the chevron before the panel
     /// hides. The generation cancels a pending hide when the drawer reopens.
+    private static let foldLog = DiagLog(category: "FoldHover")
+    private weak var shownScreen: NSScreen?
     private let foldMorph = FoldMorph()
     private var foldCloseGeneration = 0
-    private var foldHoverTimer: Timer?
+    private var foldHoverTask: Task<Void, Never>?
     private var foldPointerOutsideSince: Date?
 
     /// Liquid Glass follows the window's appearance, not SwiftUI's colour
@@ -57,28 +59,35 @@ final class IceBarPanel: NSPanel {
         }
     }
 
-    /// With "Open on hover", close once the pointer has left the drawer and
-    /// the menu-bar strip above it for a moment.
+    /// With "Open on hover", close once the pointer has left the drawer, the
+    /// chevron and the strip between them for a moment.
     private func startFoldHoverWatch() {
-        foldHoverTimer?.invalidate()
+        foldHoverTask?.cancel()
         foldPointerOutsideSince = nil
         guard appState?.settings.general.showOnHover == true else { return }
-        foldHoverTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkFoldHover() }
+        foldHoverTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                checkFoldHover()
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         }
     }
 
     private func checkFoldHover() {
-        guard isVisible, foldMorph.isOpen, let screen else { return }
-        // The whole menu bar counts as "still hovering": Thaw's hover-open
-        // fires anywhere on it, so excluding it would close and reopen in a loop.
-        let menuBarHeight = screen.getMenuBarHeightEstimate()
-        let menuBar = NSRect(x: screen.frame.minX, y: screen.frame.maxY - menuBarHeight, width: screen.frame.width, height: menuBarHeight)
-        let pointer = NSEvent.mouseLocation
-        if frame.insetBy(dx: -8, dy: -8).contains(pointer) || menuBar.contains(pointer) {
+        guard isVisible, foldMorph.isOpen, let screen = shownScreen ?? screen else { return }
+        // Still hovering while over the drawer, the chevron, or the strip of
+        // menu bar straight above the drawer that connects the two.
+        let drawerColumn = NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: screen.frame.maxY - frame.minY)
+        let chevron = appState?.menuBarManager.controlItem(withName: .visible)?.window?.frame ?? .zero
+        let pointer = FoldPointer.location
+        if drawerColumn.insetBy(dx: -8, dy: -8).contains(pointer) || chevron.insetBy(dx: -4, dy: -4).contains(pointer) {
             foldPointerOutsideSince = nil
         } else if let since = foldPointerOutsideSince {
-            if Date.now.timeIntervalSince(since) > 0.4 { hide() }
+            if Date.now.timeIntervalSince(since) > 0.25 {
+                Self.foldLog.notice("Fold hover-away: closing, pointer=\(pointer.debugDescription) frame=\(self.frame.debugDescription)")
+                hide()
+            }
         } else {
             foldPointerOutsideSince = .now
         }
@@ -168,7 +177,7 @@ final class IceBarPanel: NSPanel {
         publisher(for: \.frame).map(\.size)
             .removeDuplicates()
             .sink { [weak self] _ in
-                guard let self, let screen else {
+                guard let self, let screen = shownScreen ?? screen else {
                     return
                 }
                 updateOrigin(for: screen)
@@ -279,6 +288,7 @@ final class IceBarPanel: NSPanel {
         guard let appState else {
             return
         }
+        shownScreen = screen
 
         let menuBarHeight = screen.getMenuBarHeightEstimate()
         diagLog.notice("""
@@ -365,8 +375,8 @@ final class IceBarPanel: NSPanel {
 
     override func close() {
         foldCloseGeneration += 1
-        foldHoverTimer?.invalidate()
-        foldHoverTimer = nil
+        foldHoverTask?.cancel()
+        foldHoverTask = nil
         let closeDelay = FoldMotion.current.closeDelay
         guard
             Constants.bundleIdentifier == "com.samdeherdt.fold",
@@ -404,10 +414,17 @@ final class IceBarPanel: NSPanel {
 
     /// Resizes the panel to match the hosting view's intrinsic content size.
     func resizeToContent() {
-        guard let contentView, let screen else { return }
+        // Re-anchor on the screen the drawer opened on. `self.screen` can name
+        // a neighbouring display when the drawer touches the top edge (as the
+        // liquid pour does), which would fling the drawer onto that display.
+        guard let contentView, let screen = shownScreen ?? screen else { return }
         let ideal = contentView.intrinsicContentSize
         guard ideal != .zero, ideal != frame.size else { return }
-        setFrame(NSRect(origin: frame.origin, size: ideal), display: true, animate: false)
+        // Grow from the top edge. Keeping the bottom edge would push a fresh
+        // (zero-height) drawer up past the top of the screen and onto a
+        // display above it, which AppKit then treats as the drawer's screen.
+        let topAnchored = NSPoint(x: frame.minX, y: frame.maxY - ideal.height)
+        setFrame(NSRect(origin: topAnchored, size: ideal), display: true, animate: false)
         updateOrigin(for: screen)
     }
 }

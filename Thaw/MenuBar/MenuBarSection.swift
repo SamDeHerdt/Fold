@@ -103,7 +103,14 @@ final class MenuBarSection {
     /// Always returns the screen with the active menu bar so that
     /// clicking icons in the IceBar actually activates their popups.
     private weak var screenForIceBar: NSScreen? {
-        NSScreen.screenWithActiveMenuBar ?? NSScreen.main
+        // Fold: open where the pointer is — the chevron that was clicked or
+        // hovered — not on whichever display holds the focused app.
+        if Constants.bundleIdentifier == "com.samdeherdt.fold",
+           let screen = NSScreen.screens.first(where: { $0.frame.contains(FoldPointer.location) }) ?? NSScreen.screenWithMouse
+        {
+            return screen
+        }
+        return NSScreen.screenWithActiveMenuBar ?? NSScreen.main
     }
 
     /// The hiding state the user desires for the section.
