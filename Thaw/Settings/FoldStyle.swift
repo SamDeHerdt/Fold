@@ -365,9 +365,8 @@ struct FoldMorphReveal: ViewModifier {
         let top: CGFloat = min(0, pourCenterY - Self.seed.height) - pad
         let canvas = CGRect(x: -pad, y: top, width: size.width + pad * 2, height: size.height + pad - top)
         let blobs = gooBlobs(in: size, bar: bar)
-        return Color.clear
+        return FoldGooFill()
             .frame(width: canvas.width, height: canvas.height)
-            .modifier(FoldSurface(shape: Rectangle()))
             .mask {
                 Canvas { context, _ in
                     context.addFilter(.alphaThreshold(min: 0.5))
@@ -381,5 +380,27 @@ struct FoldMorphReveal: ViewModifier {
                 }
             }
             .position(x: canvas.midX, y: canvas.midY)
+    }
+}
+
+/// The goo's paint. Liquid Glass renders nothing once masked into an arbitrary
+/// shape, so the pour uses a flat tone that matches the chosen look, and the
+/// real surface takes over when the bar settles.
+private struct FoldGooFill: View {
+    @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
+    @AppStorage(FoldKey.glass) private var glass = "system"
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let isDark = colorScheme == .dark
+        switch FoldLook(rawValue: look) ?? .glass {
+        case .minimal:
+            Color.clear
+        case .solid, .outline:
+            Rectangle().fill(isDark ? Color(white: 0.14) : Color(white: 0.95))
+        case .glass, .frosted:
+            let opacity = glass == "clear" ? 0.55 : 0.82
+            Rectangle().fill((isDark ? Color(white: 0.16) : Color(white: 0.96)).opacity(opacity))
+        }
     }
 }
