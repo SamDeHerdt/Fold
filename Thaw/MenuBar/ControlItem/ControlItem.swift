@@ -636,6 +636,103 @@ final class ControlItem {
         }
     }
 
+    /// Fold's right-click menu: open/search first, quick Motion and Look
+    /// switches, then Arrange, Settings and Quit.
+    private func createFoldMenu(with appState: AppState) -> NSMenu {
+        let menu = NSMenu(title: "Fold")
+
+        func item(_ title: String, _ symbol: String, _ action: Selector, key: String = "") -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            return item
+        }
+        func shortcut(_ item: NSMenuItem, for action: HotkeyAction) {
+            if let combination = appState.settings.hotkeys.hotkey(withAction: action)?.keyCombination {
+                item.keyEquivalent = combination.key.keyEquivalent
+                item.keyEquivalentModifierMask = combination.modifiers.nsEventFlags
+            }
+        }
+
+        let open = item("Open Fold", "chevron.down.circle", #selector(foldOpenDrawer))
+        shortcut(open, for: .toggleHiddenSection)
+        menu.addItem(open)
+        let search = item("Search Icons…", "magnifyingglass", #selector(foldSearchIcons))
+        shortcut(search, for: .searchMenuBarItems)
+        menu.addItem(search)
+        menu.addItem(.separator())
+
+        let currentMotion = FoldMotion.current
+        let motionMenu = NSMenu(title: "Motion")
+        for motion in FoldMotion.allCases {
+            let entry = item(motion.title, motion.symbol, #selector(foldSetMotion(_:)))
+            entry.representedObject = motion.rawValue
+            entry.state = motion == currentMotion ? .on : .off
+            motionMenu.addItem(entry)
+        }
+        let motionItem = NSMenuItem(title: "Motion", action: nil, keyEquivalent: "")
+        motionItem.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
+        motionItem.submenu = motionMenu
+        menu.addItem(motionItem)
+
+        let currentLook = FoldLook.current
+        let lookMenu = NSMenu(title: "Look")
+        for look in FoldLook.allCases {
+            let entry = NSMenuItem(title: look.title, action: #selector(foldSetLook(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = look.rawValue
+            entry.state = look == currentLook ? .on : .off
+            lookMenu.addItem(entry)
+        }
+        let lookItem = NSMenuItem(title: "Look", action: nil, keyEquivalent: "")
+        lookItem.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)
+        lookItem.submenu = lookMenu
+        menu.addItem(lookItem)
+
+        let hover = item("Open on Hover", "cursorarrow.motionlines", #selector(foldToggleHover))
+        hover.state = appState.settings.general.showOnHover ? .on : .off
+        menu.addItem(hover)
+        menu.addItem(.separator())
+
+        menu.addItem(item("Arrange Icons…", "square.grid.3x1.below.line.grid.1x2", #selector(foldArrange)))
+        let settings = NSMenuItem(title: "Settings…", action: #selector(AppDelegate.openSettingsWindow), keyEquivalent: ",")
+        settings.keyEquivalentModifierMask = .command
+        settings.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        menu.addItem(settings)
+        menu.addItem(.separator())
+
+        let quit = NSMenuItem(title: "Quit Fold", action: #selector(NSApp.terminate), keyEquivalent: "q")
+        quit.keyEquivalentModifierMask = .command
+        quit.target = NSApp
+        menu.addItem(quit)
+        return menu
+    }
+
+    @objc private func foldOpenDrawer() {
+        appState?.menuBarManager.section(withName: .hidden)?.show()
+    }
+
+    @objc private func foldSetMotion(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(raw, forKey: FoldKey.motion)
+    }
+
+    @objc private func foldSetLook(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(raw, forKey: FoldKey.look)
+    }
+
+    @objc private func foldToggleHover() {
+        guard let general = appState?.settings.general else { return }
+        general.showOnHover.toggle()
+    }
+
+    @objc private func foldArrange() {
+        UserDefaults.standard.set(true, forKey: "FoldOpenArrangeOnce")
+        NotificationCenter.default.post(name: .foldShowArrange, object: nil)
+        NSApp.sendAction(#selector(AppDelegate.openSettingsWindow), to: nil, from: self)
+    }
+
     @objc private func foldSearchIcons() {
         guard let appState else { return }
         HotkeyAction.searchMenuBarItems.perform(appState: appState)
@@ -1008,6 +1105,10 @@ final class ControlItem {
 
         let menu = NSMenu(title: Bundle.main.displayName)
 
+        if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            return createFoldMenu(with: appState)
+        }
+
         let settingsItem = NSMenuItem(
             title: String(localized: "\(Constants.displayName) Settings…"),
             action: #selector(AppDelegate.openSettingsWindow),
@@ -1016,19 +1117,6 @@ final class ControlItem {
         settingsItem.keyEquivalentModifierMask = .command
         settingsItem.image = NSImage(systemSymbolName: "gear", accessibilityDescription: "Settings")
         menu.addItem(settingsItem)
-
-        if Constants.bundleIdentifier == "com.samdeherdt.fold" {
-            let search = NSMenuItem(title: "Search Icons…", action: #selector(foldSearchIcons), keyEquivalent: "")
-            search.target = self
-            search.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
-            menu.insertItem(search, at: 0)
-            menu.addItem(.separator())
-            let quit = NSMenuItem(title: "Quit Fold", action: #selector(NSApp.terminate), keyEquivalent: "q")
-            quit.keyEquivalentModifierMask = .command
-            quit.target = NSApp
-            menu.addItem(quit)
-            return menu
-        }
 
         menu.addItem(.separator())
 

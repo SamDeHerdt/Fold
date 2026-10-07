@@ -575,6 +575,11 @@ private struct IceBarContentView: View {
         return itemBounds.midX - panelX
     }
 
+    /// White icons on dark appearances and on the coloured looks.
+    private var foldUsesLightIcons: Bool {
+        foldColorScheme == .dark || (FoldLook(rawValue: foldLook) ?? .glass).forcesLightIcons
+    }
+
     private var motion: FoldMotion {
         FoldMotion(rawValue: foldMotion) ?? .liquid
     }
@@ -607,7 +612,7 @@ private struct IceBarContentView: View {
             return total + image.size.width * height / image.size.height
         }
         let spacing = CGFloat(max(0, items.count - 1)) * itemSpacing
-        let width = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + 10
+        let width = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + 16
         return max(44, width)
     }
 
@@ -690,7 +695,7 @@ private struct IceBarContentView: View {
             }
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
-            .foregroundStyle(foldColorScheme == .dark ? .white : .black)
+            .foregroundStyle(foldUsesLightIcons ? .white : .black)
             .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
             .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count, anchorInWindow: true))
 
@@ -701,8 +706,9 @@ private struct IceBarContentView: View {
                     .foregroundStyle(Color(cgColor: configuration.current.borderColor))
             }
         }
-        .padding(.horizontal, 5)
-        .padding(.bottom, 5)
+        // Room for Pop/Elastic to overshoot without the window clipping them.
+        .padding(.horizontal, 8)
+        .padding(.bottom, 10)
         .padding(.top, 2 + pourInset)
         .frame(width: layout == .horizontal ? compactWidth : nil)
         .frame(maxWidth: screen.frame.width)
@@ -831,7 +837,7 @@ private struct IceBarContentView: View {
                 Self.diagLog.warning("IceBar content: showing '\(self.cacheGracePeriodActive ? "Loading…" : "Unable to display")' for section \(self.section.logString) — imageCache.cacheFailed=true (grace period active: \(self.cacheGracePeriodActive), loadingTimedOut: \(self.loadingTimedOut), cached images count: \(self.imageCache.images.count), items in section: \(self.itemManager.itemCache[self.section].count))")
             }
         } else {
-            let isLightBackground = foldColorScheme == .light
+            let isLightBackground = !foldUsesLightIcons
             switch layout {
             case .horizontal:
                 ScrollView(.horizontal, showsIndicators: false) {

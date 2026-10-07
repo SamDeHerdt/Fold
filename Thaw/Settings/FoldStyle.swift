@@ -25,9 +25,13 @@ enum FoldKey {
     }
 }
 
-/// How the drawer opens and closes.
+/// How the drawer opens and closes. Every motion starts at the menu-bar icon.
 enum FoldMotion: String, CaseIterable, Identifiable {
     case liquid
+    case bubbles
+    case pop
+    case iris
+    case elastic
     case unfold
     case drop
     case fade
@@ -38,10 +42,42 @@ enum FoldMotion: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .liquid: "Liquid"
+        case .bubbles: "Bubbles"
+        case .pop: "Pop"
+        case .iris: "Iris"
+        case .elastic: "Elastic"
         case .unfold: "Unfold"
         case .drop: "Drop"
         case .fade: "Fade"
         case .none: "None"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .liquid: "drop.fill"
+        case .bubbles: "circle.grid.3x3.fill"
+        case .pop: "sparkle"
+        case .iris: "camera.aperture"
+        case .elastic: "arrow.up.and.down.and.sparkles"
+        case .unfold: "arrow.left.and.right"
+        case .drop: "arrow.down"
+        case .fade: "circle.lefthalf.filled"
+        case .none: "nosign"
+        }
+    }
+
+    var caption: String {
+        switch self {
+        case .liquid: "Pours out of the icon and melts into the bar"
+        case .bubbles: "Bubbles burst out of the icon"
+        case .pop: "Springs out of the icon"
+        case .iris: "Opens like a lens from the icon"
+        case .elastic: "Drops down and wobbles"
+        case .unfold: "Stretches out sideways"
+        case .drop: "Slides down"
+        case .fade: "Fades in"
+        case .none: "Appears at once"
         }
     }
 
@@ -66,6 +102,10 @@ enum FoldMotion: String, CaseIterable, Identifiable {
     private var baseOpenAnimation: Animation? {
         switch self {
         case .liquid: .spring(duration: 0.75, bounce: 0.22)
+        case .bubbles: .spring(duration: 0.7, bounce: 0.25)
+        case .pop: .spring(duration: 0.45, bounce: 0.45)
+        case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.42)
+        case .elastic: .spring(duration: 0.65, bounce: 0.55)
         case .unfold: .spring(duration: 0.35, bounce: 0.3)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.25)
         case .fade: .easeOut(duration: 0.15)
@@ -76,6 +116,10 @@ enum FoldMotion: String, CaseIterable, Identifiable {
     private var baseCloseAnimation: Animation? {
         switch self {
         case .liquid: .timingCurve(0.22, 1, 0.36, 1, duration: 0.35)
+        case .bubbles: .timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
+        case .pop: .easeIn(duration: 0.16)
+        case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.24)
+        case .elastic: .timingCurve(0.22, 1, 0.36, 1, duration: 0.2)
         case .unfold: .timingCurve(0.22, 1, 0.36, 1, duration: 0.22)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.15)
         case .fade: .easeIn(duration: 0.12)
@@ -91,6 +135,10 @@ enum FoldMotion: String, CaseIterable, Identifiable {
     private var baseCloseDelay: TimeInterval {
         switch self {
         case .liquid: 0.35
+        case .bubbles: 0.3
+        case .pop: 0.16
+        case .iris: 0.24
+        case .elastic: 0.2
         case .unfold: 0.22
         case .drop: 0.15
         case .fade: 0.12
@@ -98,10 +146,14 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Liquid pours out of the menu-bar button, so its window reaches up over
-    /// the menu bar. The extra strip stays transparent.
+    /// Motions that pour out of the menu-bar button reach up over the menu
+    /// bar, so their window extends over it. The extra strip stays transparent.
+    var poursFromButton: Bool {
+        self == .liquid || self == .bubbles
+    }
+
     func pourInset(menuBarHeight: CGFloat) -> CGFloat {
-        self == .liquid ? menuBarHeight : 0
+        poursFromButton ? menuBarHeight : 0
     }
 }
 
@@ -112,6 +164,9 @@ enum FoldLook: String, CaseIterable, Identifiable {
     case solid
     case outline
     case minimal
+    case accent
+    case neon
+    case aurora
 
     var id: String { rawValue }
 
@@ -122,7 +177,19 @@ enum FoldLook: String, CaseIterable, Identifiable {
         case .solid: "Solid"
         case .outline: "Outline"
         case .minimal: "Minimal"
+        case .accent: "Accent"
+        case .neon: "Neon"
+        case .aurora: "Aurora"
         }
+    }
+
+    /// Coloured looks always carry white icons, whatever the appearance.
+    var forcesLightIcons: Bool {
+        self == .accent || self == .neon || self == .aurora
+    }
+
+    static var current: FoldLook {
+        FoldLook(rawValue: UserDefaults.standard.string(forKey: FoldKey.look) ?? "") ?? .glass
     }
 }
 
@@ -160,6 +227,19 @@ final class FoldMorph {
     var isOpen = false
 }
 
+/// The aurora gradient, shared by the surface and the goo paint.
+private func foldAuroraGradient() -> LinearGradient {
+    LinearGradient(
+        colors: [
+            Color(red: 0.36, green: 0.29, blue: 0.86),
+            Color(red: 0.76, green: 0.28, blue: 0.62),
+            Color(red: 0.16, green: 0.62, blue: 0.72),
+        ],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+}
+
 /// Draws the selected Fold look behind content, in the given shape.
 struct FoldSurface<S: InsettableShape>: ViewModifier {
     let shape: S
@@ -185,6 +265,21 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
             content
                 .background(.thinMaterial, in: shape)
                 .overlay(shape.strokeBorder(Color.white.opacity(isDark ? 0.14 : 0.6), lineWidth: 0.5))
+        case .accent where !reduceTransparency:
+            content.glassEffect(.regular.tint(Color.accentColor.opacity(0.6)), in: shape)
+        case .accent:
+            content.background(Color.accentColor, in: shape)
+        case .neon:
+            content
+                .background(Color(white: 0.06), in: shape)
+                .overlay(
+                    shape.strokeBorder(Color.accentColor, lineWidth: 1.5)
+                        .shadow(color: Color.accentColor.opacity(0.9), radius: 5)
+                )
+        case .aurora:
+            content
+                .background(foldAuroraGradient(), in: shape)
+                .overlay(shape.strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5))
         case .outline:
             content
                 .background((isDark ? Color.black : Color.white).opacity(0.28), in: shape)
@@ -202,7 +297,7 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
 
 /// Reveals a bar with the chosen motion. `anchorX` is the menu-bar button's
 /// centre along the bar and `pourCenterY` its centre above the bar (negative),
-/// both in the bar's own coordinates.
+/// both in the bar's own coordinates unless `anchorInWindow` is set.
 struct FoldMorphReveal: ViewModifier, Animatable {
     /// 0 = folded into the button, 1 = fully open.
     var progress: CGFloat
@@ -213,10 +308,11 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         get { progress }
         set { progress = newValue }
     }
+
     var anchorX: CGFloat?
     let motion: FoldMotion
     let pourCenterY: CGFloat
-    /// Icons in the bar; Liquid bursts one goo ball out per icon.
+    /// Icons in the bar; Liquid and Bubbles burst one ball out per icon.
     var slotCount: Int = 7
     /// When true, `anchorX` is in window coordinates and is converted to the
     /// bar's own space at draw time (the bar's real position can differ from
@@ -238,17 +334,17 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         min(1, max(0, value))
     }
 
+    private var pours: Bool { motion.poursFromButton }
+
     private func barRect(in size: CGSize) -> CGRect {
-        guard motion == .liquid || motion == .unfold else {
+        guard pours || motion == .unfold else {
             return CGRect(origin: .zero, size: size)
         }
         let p: CGFloat = max(progress, 0)
-        let isLiquid = motion == .liquid
-        // Liquid: the droplet falls from the button first, then stretches.
-        // Liquid: full width by 0.85 so it matches the goo before the hand-off.
-        let grow: CGFloat = isLiquid ? Self.unit((p - 0.3) / 0.55) : Self.unit(p)
-        let fall: CGFloat = isLiquid ? Self.unit(p / 0.45) : 1
-        let seedTop: CGFloat = isLiquid ? pourCenterY - Self.seed.height / 2 : 0
+        // Pouring motions: full width by 0.85 so the goo hand-off matches.
+        let grow: CGFloat = pours ? Self.unit((p - 0.3) / 0.55) : Self.unit(p)
+        let fall: CGFloat = pours ? Self.unit(p / 0.45) : 1
+        let seedTop: CGFloat = pours ? pourCenterY - Self.seed.height / 2 : 0
         let width: CGFloat = min(size.width, Self.seed.width + (size.width - Self.seed.width) * grow)
         let height: CGFloat = min(size.height, Self.seed.height + (size.height - Self.seed.height) * grow)
         let anchor: CGFloat = anchorX ?? size.width / 2
@@ -256,15 +352,24 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         return CGRect(x: x, y: seedTop * (1 - fall), width: width, height: height)
     }
 
-    /// Goo silhouettes for the liquid pour, in the bar's coordinates, after
-    /// gooey-react: a blob swells on the button, a drop stretches out of it and
-    /// falls, then one ball per icon bursts sideways out of the drop (staggered)
-    /// and the row fuses into the bar. Blur + alpha threshold supplies the necks.
-    private func gooBlobs(in size: CGSize, bar _: CGRect) -> [CGRect] {
+    /// Iris: a circle centred on the button's foot that grows over the bar.
+    private func irisCircle(in size: CGSize) -> CGRect {
+        let anchor: CGFloat = anchorX ?? size.width / 2
+        let reach: CGFloat = hypot(max(anchor, size.width - anchor), size.height) * 1.05
+        let r: CGFloat = reach * max(progress, 0)
+        return CGRect(x: anchor - r, y: -r, width: r * 2, height: r * 2)
+    }
+
+    /// Silhouettes for the pour, in the bar's coordinates, after gooey-react:
+    /// a blob swells on the button, a drop stretches out of it and falls, then
+    /// one ball per icon bursts sideways (staggered) and the row fuses into the
+    /// bar. For Liquid a blur + alpha threshold supplies the necks.
+    private func gooBlobs(in size: CGSize) -> [CGRect] {
         let p: CGFloat = max(progress, 0)
         let anchor: CGFloat = anchorX ?? size.width / 2
         let h: CGFloat = size.height
-        let inflate: CGFloat = Self.gooBlur * 0.45 // threshold erodes edges; pre-grow
+        // The threshold erodes edges, so liquid shapes are pre-grown; bubbles stay crisp.
+        let inflate: CGFloat = motion == .liquid ? Self.gooBlur * 0.45 : 0
         var blobs: [CGRect] = []
 
         func circle(_ x: CGFloat, _ y: CGFloat, _ d: CGFloat) -> CGRect {
@@ -295,13 +400,13 @@ struct FoldMorphReveal: ViewModifier, Animatable {
             count == 1 ? size.width / 2 : h / 2 + span * CGFloat(i) / CGFloat(count - 1)
         }
         let order = slots.indices.sorted { abs(slots[$0] - anchor) < abs(slots[$1] - anchor) }
+        let bubbleScale: CGFloat = motion == .bubbles ? 0.82 : 1
         for (rank, index) in order.enumerated() {
             let start: CGFloat = 0.32 + CGFloat(rank) * 0.035
             let t: CGFloat = ease((p - start) / 0.42)
             guard t > 0 else { continue }
             let x: CGFloat = anchor + (slots[index] - anchor) * t
-            // Ends exactly bar-high once the threshold's pre-grow is added.
-            blobs.append(circle(x, h / 2, (h - inflate * 2) * (0.6 + 0.4 * t)))
+            blobs.append(circle(x, h / 2, (h - inflate * 2) * (0.6 + 0.4 * t) * bubbleScale))
         }
 
         // 4. Fuse: a capsule grows over the row and smooths the bumps.
@@ -317,25 +422,33 @@ struct FoldMorphReveal: ViewModifier, Animatable {
     /// The real capsule fades in underneath before the goo fades off the top,
     /// so the hand-off never shows two half-transparent layers.
     private var capsuleOpacity: Double {
-        motion == .liquid ? Double(Self.unit((progress - 0.8) / 0.08)) : 1
+        pours ? Double(Self.unit((progress - 0.8) / 0.08)) : 1
     }
 
     /// Goo while pouring, the real capsule once settled (keeps the glass rim).
     private var gooAmount: Double {
-        motion == .liquid ? Double(1 - Self.unit((progress - 0.9) / 0.1)) : 0
+        pours ? Double(1 - Self.unit((progress - 0.9) / 0.1)) : 0
     }
 
     private var contentOpacity: Double {
         switch motion {
         case .liquid: Double(Self.unit((progress - 0.6) / 0.3))
+        case .bubbles: Double(Self.unit((progress - 0.55) / 0.3))
         case .unfold: Double(Self.unit((progress - 0.25) / 0.6))
+        case .pop: Double(Self.unit(progress / 0.4))
+        case .iris: Double(Self.unit((progress - 0.1) / 0.5))
+        case .elastic: Double(Self.unit(progress / 0.5))
         case .drop, .fade: Double(Self.unit(progress))
         case .none: 1
         }
     }
 
     private var surfaceOpacity: Double {
-        motion == .drop || motion == .fade ? Double(Self.unit(progress)) : 1
+        switch motion {
+        case .drop, .fade: Double(Self.unit(progress))
+        case .pop: Double(Self.unit(progress / 0.25))
+        default: 1
+        }
     }
 
     private var dropOffset: CGFloat {
@@ -346,16 +459,41 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         motion == .none ? 0 : max(0, 1 - progress) * 2
     }
 
+    /// Pop springs out of the icon; Elastic drops and wobbles like rubber.
+    private var scale: CGSize {
+        let p: CGFloat = max(progress, 0)
+        switch motion {
+        case .pop:
+            let s: CGFloat = 0.35 + 0.65 * p
+            return CGSize(width: s, height: s)
+        case .elastic:
+            let y: CGFloat = 0.15 + 0.85 * p
+            // Squash sideways while it stretches down, like rubber.
+            return CGSize(width: 1 + (1 - y) * 0.08, height: y)
+        default:
+            return CGSize(width: 1, height: 1)
+        }
+    }
+
     func body(content: Content) -> some View {
-        content
+        let scale = scale
+        let anchorX = anchorX
+        let anchorInWindow = anchorInWindow
+        return content
             .opacity(contentOpacity)
             .blur(radius: contentBlur)
             .mask(alignment: .topLeading) {
                 GeometryReader { geometry in
-                    let r = local(geometry).barRect(in: geometry.size)
-                    Capsule()
-                        .frame(width: r.width, height: r.height)
-                        .position(x: r.midX, y: r.midY)
+                    let reveal = local(geometry)
+                    if motion == .iris {
+                        let c = reveal.irisCircle(in: geometry.size)
+                        Circle().frame(width: c.width, height: c.height).position(x: c.midX, y: c.midY)
+                    } else {
+                        let r = reveal.barRect(in: geometry.size)
+                        Capsule()
+                            .frame(width: r.width, height: r.height)
+                            .position(x: r.midX, y: r.midY)
+                    }
                 }
             }
             .background(alignment: .topLeading) {
@@ -364,6 +502,16 @@ struct FoldMorphReveal: ViewModifier, Animatable {
                 }
             }
             .offset(y: dropOffset)
+            .visualEffect { effect, proxy in
+                let frame = proxy.frame(in: .global)
+                let width = max(proxy.size.width, 1)
+                let localAnchor = anchorInWindow ? (anchorX ?? frame.midX) - frame.minX : (anchorX ?? width / 2)
+                return effect.scaleEffect(
+                    x: scale.width,
+                    y: scale.height,
+                    anchor: UnitPoint(x: min(max(localAnchor / width, 0), 1), y: 0)
+                )
+            }
     }
 
     /// gooey-react's "medium" is a 12 px blur at 100 px-scale shapes; the bar is
@@ -373,6 +521,7 @@ struct FoldMorphReveal: ViewModifier, Animatable {
 
     private func surface(in size: CGSize) -> some View {
         let bar = barRect(in: size)
+        let iris = irisCircle(in: size)
         return ZStack(alignment: .topLeading) {
             Color.clear
                 .frame(width: bar.width, height: bar.height)
@@ -380,25 +529,35 @@ struct FoldMorphReveal: ViewModifier, Animatable {
                 .position(x: bar.midX, y: bar.midY)
                 .opacity(capsuleOpacity)
             if gooAmount > 0 {
-                gooSurface(in: size, bar: bar)
+                gooSurface(in: size)
                     .opacity(gooAmount)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .mask(alignment: .topLeading) {
+            if motion == .iris {
+                Circle().frame(width: iris.width, height: iris.height).position(x: iris.midX, y: iris.midY)
+            } else {
+                Rectangle().padding(-Self.gooPadding * 3)
+            }
+        }
         .opacity(surfaceOpacity)
     }
 
-    private func gooSurface(in size: CGSize, bar: CGRect) -> some View {
+    private func gooSurface(in size: CGSize) -> some View {
         let pad = Self.gooPadding
         let top: CGFloat = min(0, pourCenterY - Self.seed.height) - pad
         let canvas = CGRect(x: -pad, y: top, width: size.width + pad * 2, height: size.height + pad - top)
-        let blobs = gooBlobs(in: size, bar: bar)
+        let blobs = gooBlobs(in: size)
+        let gooey = motion == .liquid
         return FoldGooFill()
             .frame(width: canvas.width, height: canvas.height)
             .mask {
                 Canvas { context, _ in
-                    context.addFilter(.alphaThreshold(min: 0.5))
-                    context.addFilter(.blur(radius: Self.gooBlur))
+                    if gooey {
+                        context.addFilter(.alphaThreshold(min: 0.5))
+                        context.addFilter(.blur(radius: Self.gooBlur))
+                    }
                     context.drawLayer { layer in
                         for blob in blobs {
                             let local = blob.offsetBy(dx: -canvas.minX, dy: -canvas.minY)
@@ -429,6 +588,12 @@ private struct FoldGooFill: View {
         case .glass, .frosted:
             let opacity = glass == "clear" ? 0.55 : 0.82
             Rectangle().fill((isDark ? Color(white: 0.16) : Color(white: 0.96)).opacity(opacity))
+        case .accent:
+            Rectangle().fill(Color.accentColor.opacity(0.85))
+        case .neon:
+            Rectangle().fill(Color(white: 0.06))
+        case .aurora:
+            Rectangle().fill(foldAuroraGradient())
         }
     }
 }
