@@ -16,11 +16,12 @@ struct FoldSettingsContent: View {
     @AppStorage(FoldKey.glass) private var glass = "system"
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
     @AppStorage(FoldKey.maxWidth) private var maxWidth = 0.0
+    @AppStorage(FoldKey.motion) private var motion = FoldMotion.liquid.rawValue
     @State private var isArranging = false
     @State private var window: NSWindow?
     @State private var replay = 0
 
-    private static let compactSize = NSSize(width: 480, height: 640)
+    private static let compactSize = NSSize(width: 560, height: 820)
     private static let arrangeSize = NSSize(width: 680, height: 490)
 
     private var screenWidth: CGFloat {
@@ -71,6 +72,14 @@ struct FoldSettingsContent: View {
                         }
                     }
 
+                    Section("Motion") {
+                        Picker("Open", selection: $motion) {
+                            ForEach(FoldMotion.allCases) { Text($0.title).tag($0.rawValue) }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: motion) { replay += 1 }
+                    }
+
                     Section("Look") {
                         Picker("Style", selection: $look) {
                             ForEach(FoldLook.allCases) { Text($0.title).tag($0.rawValue) }
@@ -105,7 +114,7 @@ struct FoldSettingsContent: View {
                     }
 
                     Section("Menu bar icon") {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 8), spacing: 6) {
                             ForEach(icons, id: \.name) { set in
                                 FoldIconChoice(
                                     image: set.hidden.nsImage(for: appState),
@@ -197,6 +206,7 @@ private struct FoldPreview: View {
     let replay: Int
     @AppStorage(FoldKey.appearance) private var appearance = "dark"
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
+    @AppStorage(FoldKey.motion) private var motionRaw = FoldMotion.liquid.rawValue
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: CGFloat = 1
@@ -205,7 +215,7 @@ private struct FoldPreview: View {
     private static let spacing: CGFloat = 4
     private static let padding: CGFloat = 13
     private static let barHeight: CGFloat = 30
-    private static let canvas = CGSize(width: 400, height: 132)
+    private static let canvas = CGSize(width: 480, height: 150)
     private static let menuBarHeight: CGFloat = 24
 
     private var scheme: ColorScheme {
@@ -284,7 +294,7 @@ private struct FoldPreview: View {
                     .background(Capsule().fill(Color.primary.opacity(chevronHighlight)))
                     .position(x: chevronX, y: Self.menuBarHeight / 2)
             }
-            bar
+            bar(anchorX: (chevronX - barX) / scale, pourCenterY: (Self.menuBarHeight / 2 - barY) / scale)
                 .frame(width: realWidth, height: Self.barHeight)
                 .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: barWidth, height: scaledBarHeight, alignment: .topLeading)
@@ -305,15 +315,19 @@ private struct FoldPreview: View {
         .onChange(of: replay) {
             guard !reduceMotion else { return }
             progress = 0
-            withAnimation(.spring(duration: 0.35, bounce: 0.3).delay(0.15)) { progress = 1 }
+            let motion = FoldMotion(rawValue: motionRaw) ?? .liquid
+            if let animation = motion.openAnimation {
+                withAnimation(animation.delay(0.15)) { progress = 1 }
+            } else {
+                progress = 1
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Preview of the Fold drawer")
     }
 
-    private var bar: some View {
-        let chevronInBar = realWidth / 2
-        return HStack(spacing: Self.spacing) {
+    private func bar(anchorX: CGFloat, pourCenterY: CGFloat) -> some View {
+        HStack(spacing: Self.spacing) {
             ForEach(Array(images.enumerated()), id: \.offset) { _, image in
                 Image(nsImage: image)
                     .renderingMode(.template)
@@ -325,6 +339,11 @@ private struct FoldPreview: View {
         .frame(width: realWidth, height: Self.barHeight, alignment: .trailing)
         .clipped()
         .shadow(color: look == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
-        .modifier(FoldMorphReveal(progress: progress, anchorX: chevronInBar))
+        .modifier(FoldMorphReveal(
+            progress: progress,
+            anchorX: anchorX,
+            motion: FoldMotion(rawValue: motionRaw) ?? .liquid,
+            pourCenterY: pourCenterY
+        ))
     }
 }

@@ -44,6 +44,69 @@ final class IceBarPanel: NSPanel {
     /// hides. The generation cancels a pending hide when the drawer reopens.
     private let foldMorph = FoldMorph()
     private var foldCloseGeneration = 0
+    private var foldHoverTimer: Timer?
+    private var foldPointerOutsideSince: Date?
+
+    /// Liquid Glass follows the window's appearance, not SwiftUI's colour
+    /// scheme, so Fold's Light/Dark choice has to be set on the panel.
+    private func applyFoldAppearance() {
+        switch UserDefaults.standard.string(forKey: FoldKey.appearance) ?? "dark" {
+        case "light": appearance = NSAppearance(named: .aqua)
+        case "dark": appearance = NSAppearance(named: .darkAqua)
+        default: appearance = nil
+        }
+    }
+
+    /// With "Open on hover", close once the pointer has left the drawer and
+    /// the menu-bar strip above it for a moment.
+    private func startFoldHoverWatch() {
+        foldHoverTimer?.invalidate()
+        foldPointerOutsideSince = nil
+        guard appState?.settings.general.showOnHover == true else { return }
+        foldHoverTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkFoldHover() }
+        }
+    }
+
+    private func checkFoldHover() {
+        guard isVisible, foldMorph.isOpen, let screen else { return }
+        // The whole menu bar counts as "still hovering": Thaw's hover-open
+        // fires anywhere on it, so excluding it would close and reopen in a loop.
+        let menuBarHeight = screen.getMenuBarHeightEstimate()
+        let menuBar = NSRect(x: screen.frame.minX, y: screen.frame.maxY - menuBarHeight, width: screen.frame.width, height: menuBarHeight)
+        let pointer = NSEvent.mouseLocation
+        if frame.insetBy(dx: -8, dy: -8).contains(pointer) || menuBar.contains(pointer) {
+            foldPointerOutsideSince = nil
+        } else if let since = foldPointerOutsideSince {
+            if Date.now.timeIntervalSince(since) > 0.4 { hide() }
+        } else {
+            foldPointerOutsideSince = .now
+        }
+    }
+
+    /// A vertical wheel can't scroll a horizontal strip; turn it sideways.
+    override func sendEvent(_ event: NSEvent) {
+        guard
+            event.type == .scrollWheel,
+            event.phase.isEmpty, event.momentumPhase.isEmpty,
+            abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX),
+            let cgEvent = event.cgEvent?.copy()
+        else {
+            super.sendEvent(event)
+            return
+        }
+        let pairs: [(CGEventField, CGEventField)] = [
+            (.scrollWheelEventDeltaAxis1, .scrollWheelEventDeltaAxis2),
+            (.scrollWheelEventPointDeltaAxis1, .scrollWheelEventPointDeltaAxis2),
+            (.scrollWheelEventFixedPtDeltaAxis1, .scrollWheelEventFixedPtDeltaAxis2),
+        ]
+        for (vertical, horizontal) in pairs {
+            let value = cgEvent.getDoubleValueField(vertical)
+            cgEvent.setDoubleValueField(horizontal, value: value)
+            cgEvent.setDoubleValueField(vertical, value: 0)
+        }
+        super.sendEvent(NSEvent(cgEvent: cgEvent) ?? event)
+    }
 
     /// Creates a new Thaw Bar panel with Liquid Glass support.
     init() {
@@ -123,7 +186,9 @@ final class IceBarPanel: NSPanel {
 
         func getOrigin(for iceBarLocation: IceBarLocation) -> CGPoint {
             let menuBarHeight = screen.getMenuBarHeightEstimate()
-            let defaultOriginY = ((screen.frame.maxY - 1) - menuBarHeight) - frame.height
+            let pourInset = Constants.bundleIdentifier == "com.samdeherdt.fold"
+                ? FoldMotion.current.pourInset(menuBarHeight: menuBarHeight) : 0
+            let defaultOriginY = ((screen.frame.maxY - 1) - menuBarHeight) - frame.height + pourInset
 
             var originForRightOfScreen: CGPoint {
                 CGPoint(x: screen.frame.maxX - frame.width, y: defaultOriginY)
@@ -232,6 +297,10 @@ final class IceBarPanel: NSPanel {
         foldCloseGeneration += 1
         ignoresMouseEvents = false
         foldMorph.isOpen = true
+        if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            applyFoldAppearance()
+            startFoldHoverWatch()
+        }
         appState.navigationState.isIceBarPresented = true
         currentSection = section
         lastShowTimestamp = Date()
@@ -296,12 +365,16 @@ final class IceBarPanel: NSPanel {
 
     override func close() {
         foldCloseGeneration += 1
+        foldHoverTimer?.invalidate()
+        foldHoverTimer = nil
+        let closeDelay = FoldMotion.current.closeDelay
         guard
             Constants.bundleIdentifier == "com.samdeherdt.fold",
             foldMorph.isOpen,
             isVisible,
             contentView != nil,
-            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            closeDelay > 0
         else {
             foldMorph.isOpen = false
             finishClose()
@@ -311,7 +384,7 @@ final class IceBarPanel: NSPanel {
         appState?.navigationState.isIceBarPresented = false
         ignoresMouseEvents = true
         let generation = foldCloseGeneration
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + closeDelay) { [weak self] in
             guard let self, foldCloseGeneration == generation else { return }
             finishClose()
         }
@@ -401,6 +474,7 @@ private struct IceBarContentView: View {
     @AppStorage(FoldKey.appearance) private var foldAppearance = "dark"
     @AppStorage(FoldKey.maxWidth) private var foldMaxWidth = 0.0
     @AppStorage(FoldKey.look) private var foldLook = FoldLook.glass.rawValue
+    @AppStorage(FoldKey.motion) private var foldMotion = FoldMotion.liquid.rawValue
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var morphProgress: CGFloat = 0
@@ -467,18 +541,28 @@ private struct IceBarContentView: View {
         return itemBounds.midX - panelX - 5
     }
 
-    private func setMorph(open: Bool) {
-        if reduceMotion {
-            morphProgress = open ? 1 : 0
-        } else if open {
-            withAnimation(.spring(duration: 0.35, bounce: 0.3)) { morphProgress = 1 }
-        } else {
-            withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.22)) { morphProgress = 0 }
-        }
+    private var motion: FoldMotion {
+        FoldMotion(rawValue: foldMotion) ?? .liquid
     }
 
-    private var overflows: Bool {
-        naturalWidth > maxDrawerWidth
+    /// Transparent strip over the menu bar that the liquid pour starts in.
+    private var pourInset: CGFloat {
+        layout == .horizontal ? motion.pourInset(menuBarHeight: screen.getMenuBarHeightEstimate()) : 0
+    }
+
+    /// The menu-bar button's vertical centre, measured from the bar's top edge.
+    private var pourCenterY: CGFloat {
+        let menuBarHeight = screen.getMenuBarHeightEstimate()
+        return (menuBarHeight / 2 - 1) - (pourInset + 2)
+    }
+
+    private func setMorph(open: Bool) {
+        let animation = open ? motion.openAnimation : motion.closeAnimation
+        guard !reduceMotion, let animation else {
+            morphProgress = open ? 1 : 0
+            return
+        }
+        withAnimation(animation) { morphProgress = open ? 1 : 0 }
     }
 
     private var naturalWidth: CGFloat {
@@ -574,7 +658,7 @@ private struct IceBarContentView: View {
             .padding(.vertical, verticalPadding)
             .foregroundStyle(foldColorScheme == .dark ? .white : .black)
             .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
-            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX))
+            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY))
 
             if configuration.current.borderOnThawBar {
                 clipShape
@@ -585,7 +669,7 @@ private struct IceBarContentView: View {
         }
         .padding(.horizontal, 5)
         .padding(.bottom, 5)
-        .padding(.top, 2)
+        .padding(.top, 2 + pourInset)
         .frame(width: layout == .horizontal ? compactWidth : nil)
         .frame(maxWidth: screen.frame.width)
         .fixedSize(horizontal: true, vertical: layout == .horizontal)
@@ -716,7 +800,7 @@ private struct IceBarContentView: View {
             let isLightBackground = foldColorScheme == .light
             switch layout {
             case .horizontal:
-                ScrollView(.horizontal, showsIndicators: overflows) {
+                ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: itemSpacing) {
                         ForEach(items, id: \.windowID) { item in
                             IceBarItemView(

@@ -14,6 +14,69 @@ enum FoldKey {
     static let look = "FoldLookV1"
     /// Maximum drawer length in points; 0 means "as wide as the screen allows".
     static let maxWidth = "FoldMaxWidthV1"
+    static let motion = "FoldMotionV1"
+}
+
+/// How the drawer opens and closes.
+enum FoldMotion: String, CaseIterable, Identifiable {
+    case liquid
+    case unfold
+    case drop
+    case fade
+    case none
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .liquid: "Liquid"
+        case .unfold: "Unfold"
+        case .drop: "Drop"
+        case .fade: "Fade"
+        case .none: "None"
+        }
+    }
+
+    static var current: FoldMotion {
+        FoldMotion(rawValue: UserDefaults.standard.string(forKey: FoldKey.motion) ?? "") ?? .liquid
+    }
+
+    var openAnimation: Animation? {
+        switch self {
+        case .liquid: .spring(duration: 0.55, bounce: 0.25)
+        case .unfold: .spring(duration: 0.35, bounce: 0.3)
+        case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.25)
+        case .fade: .easeOut(duration: 0.15)
+        case .none: nil
+        }
+    }
+
+    var closeAnimation: Animation? {
+        switch self {
+        case .liquid: .timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
+        case .unfold: .timingCurve(0.22, 1, 0.36, 1, duration: 0.22)
+        case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.15)
+        case .fade: .easeIn(duration: 0.12)
+        case .none: nil
+        }
+    }
+
+    /// How long the panel stays up after a close starts, matching `closeAnimation`.
+    var closeDelay: TimeInterval {
+        switch self {
+        case .liquid: 0.3
+        case .unfold: 0.22
+        case .drop: 0.15
+        case .fade: 0.12
+        case .none: 0
+        }
+    }
+
+    /// Liquid pours out of the menu-bar button, so its window reaches up over
+    /// the menu bar. The extra strip stays transparent.
+    func pourInset(menuBarHeight: CGFloat) -> CGFloat {
+        self == .liquid ? menuBarHeight : 0
+    }
 }
 
 /// The surface drawn behind the drawer's icons.
@@ -100,31 +163,71 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
     }
 }
 
-/// Grows a bar out of a chevron-sized droplet at `anchorX` (in the bar's own
-/// coordinates), Liquid-Glass style, and folds it back on close.
+/// Reveals a bar with the chosen motion. `anchorX` is the menu-bar button's
+/// centre along the bar and `pourCenterY` its centre above the bar (negative),
+/// both in the bar's own coordinates.
 struct FoldMorphReveal: ViewModifier {
-    /// 0 = folded into the chevron, 1 = fully open.
+    /// 0 = folded into the button, 1 = fully open.
     let progress: CGFloat
     let anchorX: CGFloat?
+    let motion: FoldMotion
+    let pourCenterY: CGFloat
 
-    private static let seedSize = CGSize(width: 30, height: 22)
+    private static let seed = CGSize(width: 30, height: 22)
 
-    private func rect(in size: CGSize) -> CGRect {
-        let p = min(max(progress, 0), 1.2)
-        let width = max(Self.seedSize.width, Self.seedSize.width + (size.width - Self.seedSize.width) * p)
-        let height = min(size.height, Self.seedSize.height + (size.height - Self.seedSize.height) * min(p, 1))
-        let anchor = anchorX ?? size.width / 2
-        let x = min(max(anchor - width / 2, 0), max(0, size.width - width))
-        return CGRect(x: x, y: 0, width: min(width, size.width), height: height)
+    private static func unit(_ value: CGFloat) -> CGFloat {
+        min(1, max(0, value))
+    }
+
+    private func barRect(in size: CGSize) -> CGRect {
+        guard motion == .liquid || motion == .unfold else {
+            return CGRect(origin: .zero, size: size)
+        }
+        let p: CGFloat = max(progress, 0)
+        let isLiquid = motion == .liquid
+        // Liquid: the droplet falls from the button first, then stretches.
+        let grow: CGFloat = isLiquid ? Self.unit((p - 0.3) / 0.7) : Self.unit(p)
+        let fall: CGFloat = isLiquid ? Self.unit(p / 0.45) : 1
+        let seedTop: CGFloat = isLiquid ? pourCenterY - Self.seed.height / 2 : 0
+        let width: CGFloat = min(size.width, Self.seed.width + (size.width - Self.seed.width) * grow)
+        let height: CGFloat = min(size.height, Self.seed.height + (size.height - Self.seed.height) * grow)
+        let anchor: CGFloat = anchorX ?? size.width / 2
+        let x: CGFloat = min(max(anchor - width / 2, 0), max(0, size.width - width))
+        return CGRect(x: x, y: seedTop * (1 - fall), width: width, height: height)
+    }
+
+    /// The liquid neck from the button to the falling droplet; it thins away.
+    private func stemRect(in size: CGSize, bar: CGRect) -> CGRect? {
+        guard motion == .liquid else { return nil }
+        let thickness: CGFloat = 1 - Self.unit((progress - 0.35) / 0.5)
+        guard thickness > 0.02 else { return nil }
+        let anchor: CGFloat = anchorX ?? size.width / 2
+        let width: CGFloat = Self.seed.width * 0.6 * thickness
+        let top: CGFloat = pourCenterY - Self.seed.height / 2 * thickness
+        let bottom: CGFloat = bar.midY
+        guard bottom > top else { return nil }
+        return CGRect(x: anchor - width / 2, y: top, width: width, height: bottom - top)
     }
 
     private var contentOpacity: Double {
-        let raw: CGFloat = (progress - 0.25) / 0.6
-        return Double(min(1, max(0, raw)))
+        switch motion {
+        case .liquid: Double(Self.unit((progress - 0.45) / 0.45))
+        case .unfold: Double(Self.unit((progress - 0.25) / 0.6))
+        case .drop, .fade: Double(Self.unit(progress))
+        case .none: 1
+        }
+    }
+
+    private var surfaceOpacity: Double {
+        motion == .drop || motion == .fade ? Double(Self.unit(progress)) : 1
+    }
+
+    private var dropOffset: CGFloat {
+        motion == .drop ? -10 * (1 - min(progress, 1)) : 0
     }
 
     private var contentBlur: CGFloat {
-        max(0, 1 - progress) * 2
+        motion == .none ? 0 : max(0, 1 - progress) * 2
     }
 
     func body(content: Content) -> some View {
@@ -133,18 +236,38 @@ struct FoldMorphReveal: ViewModifier {
             .blur(radius: contentBlur)
             .mask(alignment: .topLeading) {
                 GeometryReader { geometry in
-                    let r = rect(in: geometry.size)
-                    Capsule().frame(width: r.width, height: r.height).offset(x: r.minX, y: r.minY)
+                    let r = barRect(in: geometry.size)
+                    Capsule()
+                        .frame(width: r.width, height: r.height)
+                        .position(x: r.midX, y: r.midY)
                 }
             }
             .background(alignment: .topLeading) {
                 GeometryReader { geometry in
-                    let r = rect(in: geometry.size)
-                    Color.clear
-                        .frame(width: r.width, height: r.height)
-                        .modifier(FoldSurface(shape: Capsule()))
-                        .offset(x: r.minX, y: r.minY)
+                    surface(in: geometry.size)
                 }
             }
+            .offset(y: dropOffset)
+    }
+
+    private func surface(in size: CGSize) -> some View {
+        let bar = barRect(in: size)
+        let stem = stemRect(in: size, bar: bar)
+        return GlassEffectContainer(spacing: 14) {
+            ZStack(alignment: .topLeading) {
+                if let stem {
+                    Color.clear
+                        .frame(width: stem.width, height: stem.height)
+                        .modifier(FoldSurface(shape: Capsule()))
+                        .position(x: stem.midX, y: stem.midY)
+                }
+                Color.clear
+                    .frame(width: bar.width, height: bar.height)
+                    .modifier(FoldSurface(shape: Capsule()))
+                    .position(x: bar.midX, y: bar.midY)
+            }
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+        }
+        .opacity(surfaceOpacity)
     }
 }
