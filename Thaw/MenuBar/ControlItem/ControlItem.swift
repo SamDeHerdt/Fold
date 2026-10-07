@@ -636,6 +636,11 @@ final class ControlItem {
         }
     }
 
+    @objc private func foldSearchIcons() {
+        guard let appState else { return }
+        HotkeyAction.searchMenuBarItems.perform(appState: appState)
+    }
+
     private func checkFoldChevronHover() {
         let pointer = FoldPointer.location
         guard
@@ -657,7 +662,7 @@ final class ControlItem {
             return
         }
         if let since = foldHoverSince {
-            if Date.now.timeIntervalSince(since) > 0.18 {
+            if Date.now.timeIntervalSince(since) > FoldKey.hoverDelaySeconds {
                 foldHoverArmed = false
                 foldHoverSince = nil
                 diagLog.notice("Fold hover over chevron: opening drawer")
@@ -1013,6 +1018,10 @@ final class ControlItem {
         menu.addItem(settingsItem)
 
         if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            let search = NSMenuItem(title: "Search Icons…", action: #selector(foldSearchIcons), keyEquivalent: "")
+            search.target = self
+            search.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+            menu.insertItem(search, at: 0)
             menu.addItem(.separator())
             let quit = NSMenuItem(title: "Quit Fold", action: #selector(NSApp.terminate), keyEquivalent: "q")
             quit.keyEquivalentModifierMask = .command

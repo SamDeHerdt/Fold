@@ -15,6 +15,14 @@ enum FoldKey {
     /// Maximum drawer length in points; 0 means "as wide as the screen allows".
     static let maxWidth = "FoldMaxWidthV1"
     static let motion = "FoldMotionV1"
+    /// Seconds the pointer rests on the menu-bar icon before the drawer opens.
+    static let hoverDelay = "FoldHoverDelayV1"
+    /// Extra points between icons inside the drawer (drawer only).
+    static let iconSpacing = "FoldIconSpacingV1"
+
+    static var hoverDelaySeconds: Double {
+        UserDefaults.standard.object(forKey: hoverDelay) as? Double ?? 0.18
+    }
 }
 
 /// How the drawer opens and closes.

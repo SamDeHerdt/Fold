@@ -505,6 +505,7 @@ private struct IceBarContentView: View {
     @AppStorage(FoldKey.maxWidth) private var foldMaxWidth = 0.0
     @AppStorage(FoldKey.look) private var foldLook = FoldLook.glass.rawValue
     @AppStorage(FoldKey.motion) private var foldMotion = FoldMotion.liquid.rawValue
+    @AppStorage(FoldKey.iconSpacing) private var foldIconSpacing = 0.0
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var morphProgress: CGFloat = 0
@@ -538,6 +539,9 @@ private struct IceBarContentView: View {
     }
 
     private var itemSpacing: CGFloat {
+        if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            return CGFloat(foldIconSpacing)
+        }
         let offset = displaySettings.configuration(for: screen.displayID).itemSpacingOffset
         return max(0, CGFloat(offset).rounded())
     }

@@ -17,6 +17,8 @@ struct FoldSettingsContent: View {
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
     @AppStorage(FoldKey.maxWidth) private var maxWidth = 0.0
     @AppStorage(FoldKey.motion) private var motion = FoldMotion.liquid.rawValue
+    @AppStorage(FoldKey.hoverDelay) private var hoverDelay = 0.18
+    @AppStorage(FoldKey.iconSpacing) private var iconSpacing = 0.0
     @State private var isArranging = false
     @State private var window: NSWindow?
     @State private var replay = 0
@@ -36,6 +38,26 @@ struct FoldSettingsContent: View {
         Binding(
             get: { maxWidth > 0 ? min(maxWidth, Double(screenCap)) : Double(screenCap) },
             set: { maxWidth = $0 >= Double(screenCap) - 1 ? 0 : $0.rounded() }
+        )
+    }
+
+    /// Where the drawer appears, applied to every display Fold knows about.
+    private var positionBinding: Binding<IceBarLocation> {
+        let displays = appState.settings.displaySettings
+        return Binding(
+            get: { displays.configurationForActiveDisplay().iceBarLocation },
+            set: { location in
+                for display in displays.allDisplays() {
+                    displays.updateConfiguration(forDisplayUUID: display.id) { $0.withIceBarLocation(location) }
+                }
+            }
+        )
+    }
+
+    private var closeBinding: Binding<FoldClose> {
+        Binding(
+            get: { FoldClose(general) },
+            set: { $0.apply(to: general) }
         )
     }
 
@@ -128,14 +150,65 @@ struct FoldSettingsContent: View {
                         .padding(.vertical, 2)
                     }
 
-                    Section("Behaviour") {
+                    Section("Position") {
+                        Picker("Drawer", selection: positionBinding) {
+                            Text("Under the icon").tag(IceBarLocation.iceIcon)
+                            Text("Under the pointer").tag(IceBarLocation.mousePointer)
+                            Text("Left edge").tag(IceBarLocation.leftAligned)
+                            Text("Right edge").tag(IceBarLocation.rightAligned)
+                        }
+                        LabeledContent("Icon spacing") {
+                            Slider(value: $iconSpacing, in: 0 ... 16, step: 1)
+                                .frame(width: 220)
+                        }
+                    }
+
+                    Section {
                         Toggle("Open on hover", isOn: $general.showOnHover)
+                        if general.showOnHover {
+                            LabeledContent("Hover delay") {
+                                HStack {
+                                    Slider(value: $hoverDelay, in: 0.05 ... 0.8)
+                                        .frame(width: 180)
+                                    Text("\(Int((hoverDelay * 1000).rounded())) ms")
+                                        .monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 56, alignment: .trailing)
+                                }
+                            }
+                        }
+                        Picker("Close", selection: closeBinding) {
+                            Text("When I click elsewhere").tag(FoldClose.elsewhere)
+                            Text("After 5 seconds").tag(FoldClose.after(5))
+                            Text("After 10 seconds").tag(FoldClose.after(10))
+                            Text("After 30 seconds").tag(FoldClose.after(30))
+                            Text("Only when I close it").tag(FoldClose.never)
+                        }
                         LaunchAtLogin.Toggle { Text("Open at login") }
+                    } header: {
+                        Text("Behaviour")
+                    } footer: {
+                        Text(general.showOnHover
+                            ? "Rest on the menu-bar icon to open; move away to close."
+                            : "Click the menu-bar icon to open.")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Section("Shortcuts") {
+                        if let open = appState.settings.hotkeys.hotkey(withAction: .toggleHiddenSection) {
+                            HotkeyRecorder(hotkey: open) { Text("Open Fold") }
+                        }
+                        if let search = appState.settings.hotkeys.hotkey(withAction: .searchMenuBarItems) {
+                            HotkeyRecorder(hotkey: search) { Text("Search icons") }
+                        }
                     }
                 }
                 .formStyle(.grouped)
                 HStack {
                     Button("Arrange icons…") { isArranging = true }
+                    Button("Search icons…") {
+                        HotkeyAction.searchMenuBarItems.perform(appState: appState)
+                    }
                     Spacer()
                     Button("Open Fold") { appState.menuBarManager.section(withName: .hidden)?.show() }
                 }.padding(16)
@@ -346,5 +419,36 @@ private struct FoldPreview: View {
             pourCenterY: pourCenterY,
             slotCount: images.count
         ))
+    }
+}
+
+/// Fold's plain-language view of Thaw's rehide settings.
+private enum FoldClose: Hashable {
+    case elsewhere
+    case after(Int)
+    case never
+
+    init(_ general: GeneralSettings) {
+        if !general.autoRehide {
+            self = .never
+        } else if general.rehideStrategy == .timed {
+            self = .after(Int(general.rehideInterval.rounded()))
+        } else {
+            self = .elsewhere
+        }
+    }
+
+    func apply(to general: GeneralSettings) {
+        switch self {
+        case .elsewhere:
+            general.autoRehide = true
+            general.rehideStrategy = .smart
+        case let .after(seconds):
+            general.autoRehide = true
+            general.rehideStrategy = .timed
+            general.rehideInterval = TimeInterval(seconds)
+        case .never:
+            general.autoRehide = false
+        }
     }
 }
