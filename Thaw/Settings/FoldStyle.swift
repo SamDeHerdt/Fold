@@ -279,7 +279,46 @@ enum FoldPointer {
 @Observable
 final class FoldAttention {
     static let shared = FoldAttention()
+    /// Icons whose image changed while the drawer was closed.
     var tags = Set<MenuBarItemTag>()
+    /// Icons whose app currently shows a badge on its Dock icon.
+    var badgeTags = Set<MenuBarItemTag>()
+
+    func marks(_ tag: MenuBarItemTag) -> Bool {
+        tags.contains(tag) || badgeTags.contains(tag)
+    }
+}
+
+/// Reads which running apps have a badge on their Dock icon (unread counts
+/// and the like), through the Dock's accessibility tree.
+enum FoldDockBadges {
+    nonisolated static func badgedAppURLs() -> Set<URL> {
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+            return []
+        }
+        func children(_ element: AXUIElement) -> [AXUIElement] {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success else { return [] }
+            return value as? [AXUIElement] ?? []
+        }
+        let app = AXUIElementCreateApplication(dock.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        var result = Set<URL>()
+        for list in children(app) {
+            for item in children(list) {
+                var label: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(item, "AXStatusLabel" as CFString, &label) == .success,
+                      let text = label as? String, !text.isEmpty
+                else { continue }
+                var url: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(item, kAXURLAttribute as CFString, &url) == .success,
+                      let appURL = url as? URL
+                else { continue }
+                result.insert(appURL.standardizedFileURL)
+            }
+        }
+        return result
+    }
 }
 
 enum FoldChevron {
@@ -467,6 +506,8 @@ struct FoldMorphReveal: ViewModifier, Animatable {
     var anchorInWindow = false
     /// Corner radius for grid/column bars; nil keeps the single-row capsule.
     var cornerRadius: CGFloat?
+    /// Icons per row in a grid; 1 for a column.
+    var columns = 1
 
     /// This modifier with `anchorX` resolved into the geometry's local space.
     private func local(_ geometry: GeometryProxy) -> FoldMorphReveal {
@@ -612,26 +653,27 @@ struct FoldMorphReveal: ViewModifier, Animatable {
             return (CGRect(x: x - dd / 2, y: y - dd / 2, width: dd, height: dd), nil)
         }
 
-        // A lattice of ball positions covering the panel, at most ~28 balls.
-        var cell: CGFloat = 40
-        var cols = 1
-        var rows = 1
-        repeat {
-            cols = max(1, Int((w / cell).rounded()))
-            rows = max(1, Int((h / cell).rounded()))
-            cell *= 1.2
-        } while cols * rows > 28
-        let ball: CGFloat = min(max(w / CGFloat(cols), h / CGFloat(rows)) * 1.2, min(w, h))
+        // One chip per icon cell: a pill per row in a column, a chip per
+        // icon in a grid.
+        let cols = max(1, min(columns, slotCount))
+        var rows = max(1, Int((CGFloat(max(slotCount, 1)) / CGFloat(cols)).rounded(.up)))
+        if h / CGFloat(rows) < 22 {
+            // More rows than fit (the drawer scrolls): use what is visible.
+            rows = max(1, Int((h / 32).rounded()))
+        }
+        let cellSize = CGSize(width: w / CGFloat(cols), height: h / CGFloat(rows))
+        let ball: CGFloat = min(cellSize.width, cellSize.height)
         var slots: [CGPoint] = []
         for r in 0 ..< rows {
             for c in 0 ..< cols {
-                let x = w * (CGFloat(c) + 0.5) / CGFloat(cols)
-                let y = h * (CGFloat(r) + 0.5) / CGFloat(rows)
-                slots.append(CGPoint(
-                    x: min(max(x, ball / 2), max(ball / 2, w - ball / 2)),
-                    y: min(max(y, ball / 2), max(ball / 2, h - ball / 2))
-                ))
+                slots.append(CGPoint(x: cellSize.width * (CGFloat(c) + 0.5), y: cellSize.height * (CGFloat(r) + 0.5)))
             }
+        }
+        /// A chip centred on a point; `grown` 1 is the full cell.
+        func chip(_ x: CGFloat, _ y: CGFloat, _ grown: CGFloat) -> (CGRect, CGFloat?) {
+            let cw = max(0, (cellSize.width - 3) * grown)
+            let ch = max(0, (cellSize.height - 3) * grown)
+            return (CGRect(x: x - cw / 2, y: y - ch / 2, width: cw, height: ch), nil)
         }
         func distance(_ point: CGPoint) -> CGFloat { hypot(point.x - anchor, point.y) }
         let order = slots.indices.sorted { distance(slots[$0]) < distance(slots[$1]) }
@@ -646,12 +688,12 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         }
 
         if motion == .bubbles {
-            let step: CGFloat = min(0.045, 0.36 / CGFloat(max(slots.count, 1)))
+            let step: CGFloat = min(0.06, 0.36 / CGFloat(max(slots.count, 1)))
             for (rank, index) in order.enumerated() {
                 let t: CGFloat = (p - 0.02 - CGFloat(rank) * step) / 0.34
                 guard t > 0 else { continue }
                 let rise: CGFloat = 7 * (1 - ease(t))
-                blobs.append(circle(slots[index].x, slots[index].y + rise, ball * 0.8 * easeBack(t)))
+                blobs.append(chip(slots[index].x, slots[index].y + rise, easeBack(t)))
             }
             let fuse: CGFloat = ease((p - 0.66) / 0.3)
             if fuse > 0 { blobs.append(panel(fuse)) }
@@ -676,7 +718,7 @@ struct FoldMorphReveal: ViewModifier, Animatable {
             guard t > 0 else { continue }
             let x: CGFloat = landing.x + (slots[index].x - landing.x) * t
             let y: CGFloat = landing.y + (slots[index].y - landing.y) * t
-            blobs.append(circle(x, y, ball * (0.6 + 0.4 * t)))
+            blobs.append(chip(x, y, 0.5 + 0.5 * t))
         }
 
         // 4. Fuse: the panel grows over the balls and squares them off.

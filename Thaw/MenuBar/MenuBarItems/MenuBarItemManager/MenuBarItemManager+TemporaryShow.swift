@@ -79,7 +79,9 @@ extension MenuBarItemManager {
         /// length of the ordinary rehide timer against tearing down a menu
         /// that is open but unidentifiable. An item that lingers too long is
         /// a far cheaper failure than a menu that closes underneath the user.
-        static let maxUndetectedInterfaceChecks = 4
+        static var maxUndetectedInterfaceChecks: Int {
+            Constants.bundleIdentifier == "com.samdeherdt.fold" ? 2 : 4
+        }
 
         /// Timestamp for when the item was first shown so we can honor
         /// a short grace period for menus that use nonstandard windows.
@@ -454,7 +456,10 @@ extension MenuBarItemManager {
     /// the expensive full enumeration only runs for an item whose interface was
     /// never identified, which is spaced further apart by the `unknown` branch
     /// of ``rehideTemporarilyShownItems(force:isCalledFromTemporarilyShow:)``.
-    private static let rehidePollInterval: TimeInterval = 1
+    private static var rehidePollInterval: TimeInterval {
+        // Fold animates the icon back, so a late return is very noticeable.
+        Constants.bundleIdentifier == "com.samdeherdt.fold" ? 0.35 : 1
+    }
 
     /// Schedules a timer for the given interval that rehides the
     /// temporarily shown items when fired.
@@ -821,6 +826,28 @@ extension MenuBarItemManager {
         )
         if let opened = context.shownInterfaceWindow {
             FoldFlight.link(itemWindowID: clickItem.windowID, popupWindowID: opened.windowID)
+        } else if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            // Fold: slow apps open their window after the scan above. Keep
+            // looking for a moment, so the icon can go home the instant that
+            // window closes instead of waiting out the "unknown" budget.
+            let interfacePIDs = context.interfacePIDs
+            let itemWindowID = clickItem.windowID
+            Task { @MainActor [weak self, weak context] in
+                for _ in 0 ..< 8 {
+                    try? await Task.sleep(for: .milliseconds(180))
+                    guard let self, let context,
+                          temporarilyShownItemContexts.contains(where: { $0 === context }),
+                          context.shownInterfaceWindow == nil
+                    else { return }
+                    let candidates = WindowInfo.createWindows(option: .onScreen)
+                        .filter { !idsBeforeClick.contains($0.windowID) }
+                    if let found = MenuBarItemManager.interfaceWindowToTrack(among: candidates, interfacePIDs: interfacePIDs) {
+                        context.shownInterfaceWindow = found
+                        FoldFlight.link(itemWindowID: itemWindowID, popupWindowID: found.windowID)
+                        return
+                    }
+                }
+            }
         }
 
         return .movedAndClicked
@@ -933,7 +960,7 @@ extension MenuBarItemManager {
                 MenuBarItemManager.diagLog.debug(
                     "Interface never identified for \(stillWorthChecking.count) temporarily shown item(s); waiting to rehide rather than assuming it closed"
                 )
-                runRehideTimer(for: 3)
+                runRehideTimer(for: Constants.bundleIdentifier == "com.samdeherdt.fold" ? 1.5 : 3)
                 return
             }
             if !undetected.isEmpty {

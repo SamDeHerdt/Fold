@@ -647,9 +647,26 @@ final class ControlItem {
         foldAttentionPollTask?.cancel()
         foldAttentionPollTask = Task { @MainActor [weak self, imageCache = appState.imageCache] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(12))
+                try? await Task.sleep(for: .seconds(6))
                 guard let self else { return }
-                guard FoldKey.attentionDotEnabled, !isFoldEngaged, !appState.itemManager.lastMoveOperationOccurred(within: .seconds(3)) else { continue }
+                guard FoldKey.attentionDotEnabled else {
+                    setFoldBadgeTags([])
+                    continue
+                }
+                // Apps with a Dock badge (unread count) among the hidden icons.
+                let badged = await Task.detached { FoldDockBadges.badgedAppURLs() }.value
+                if !foldLoggedPoll {
+                    diagLog.notice("Fold attention: \(badged.count) app(s) have a Dock badge: \(badged.map(\.lastPathComponent).sorted().joined(separator: ", "))")
+                }
+                var badgeTags = Set<MenuBarItemTag>()
+                if !badged.isEmpty {
+                    for item in appState.itemManager.itemCache.managedItems(for: .hidden) {
+                        guard let url = NSRunningApplication(processIdentifier: item.sourcePID ?? item.ownerPID)?.bundleURL else { continue }
+                        if badged.contains(url.standardizedFileURL) { badgeTags.insert(item.tag) }
+                    }
+                }
+                setFoldBadgeTags(badgeTags)
+                guard !isFoldEngaged, !appState.itemManager.lastMoveOperationOccurred(within: .seconds(3)) else { continue }
                 await imageCache.foldRefreshHiddenImages()
                 if !foldLoggedPoll {
                     foldLoggedPoll = true
@@ -799,6 +816,13 @@ final class ControlItem {
     @objc private func foldSearchIcons() {
         guard let appState else { return }
         HotkeyAction.searchMenuBarItems.perform(appState: appState)
+    }
+
+    private func setFoldBadgeTags(_ tags: Set<MenuBarItemTag>) {
+        guard FoldAttention.shared.badgeTags != tags else { return }
+        FoldAttention.shared.badgeTags = tags
+        diagLog.notice("Fold attention: \(tags.count) hidden icon(s) have a Dock badge")
+        updateStatusItem()
     }
 
     /// Compares the hidden icons' images with the last ones seen and raises
@@ -959,7 +983,7 @@ final class ControlItem {
                 image = originalImage.resized(to: newSize)
             }
 
-            button.image = foldHasAttention && !isFoldEngaged ? image.map(foldImageWithDot) : image
+            button.image = (foldHasAttention || !FoldAttention.shared.badgeTags.isEmpty) && !isFoldEngaged ? image.map(foldImageWithDot) : image
             if isFoldEngaged {
                 button.highlight(true)
             }

@@ -872,7 +872,7 @@ private struct IceBarContentView: View {
             .padding(.vertical, verticalPadding)
             .foregroundStyle(foldUsesLightIcons ? .white : .black)
             .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
-            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count, anchorInWindow: true, cornerRadius: layout == .horizontal ? nil : 18))
+            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count, anchorInWindow: true, cornerRadius: layout == .horizontal ? nil : 18, columns: layout == .grid ? gridColumns : 1))
 
             if configuration.current.borderOnThawBar {
                 clipShape
@@ -1212,7 +1212,11 @@ private struct IceBarItemView: View {
                 // Wait until the IceBar panel is fully closed before checking
                 // item visibility. Uses KVO on isVisible so we resume as soon
                 // as the panel hides rather than busy-polling.
-                await panel.waitUntilClosed(timeout: .milliseconds(200))
+                // Fold doesn't wait: its drawer closes while the icon is on
+                // its way up, which saves a quarter of a second per click.
+                if foldMorph == nil {
+                    await panel.waitUntilClosed(timeout: .milliseconds(200))
+                }
                 if let liveItem = await liveOnScreenItem(matching: item, on: displayID) {
                     do {
                         try await itemManager.click(item: liveItem, with: .left)
@@ -1312,10 +1316,10 @@ private struct IceBarItemView: View {
             .frame(width: size.width, height: size.height)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { iconFrame = $0 }
             .overlay(alignment: .topTrailing) {
-                if foldMorph != nil, FoldAttention.shared.tags.contains(item.tag) {
+                if foldMorph != nil, FoldAttention.shared.marks(item.tag) {
                     // This icon changed while the drawer was closed.
                     Circle()
-                        .fill(Color.accentColor)
+                        .fill(Color.red)
                         .frame(width: 6, height: 6)
                         .offset(x: 3, y: 1)
                         .transition(.scale.combined(with: .opacity))

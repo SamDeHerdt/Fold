@@ -25,6 +25,13 @@ enum FoldFlight {
     }
 
     private static var landed: Landed?
+    private static weak var lastChevronWindow: NSWindow?
+
+    /// The menu bar's own ink: white on a dark bar, black on a light one.
+    private static var ink: NSColor {
+        let appearance = lastChevronWindow?.effectiveAppearance ?? NSApp.effectiveAppearance
+        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .white : .black
+    }
 
     private static var isEnabled: Bool {
         Constants.bundleIdentifier == "com.samdeherdt.fold"
@@ -51,7 +58,8 @@ enum FoldFlight {
         )
         landed = Landed(image: image, frame: target, chevron: chevron, chevronWindow: chevronWindow, screen: screen)
 
-        let duration = 0.34 * timeScale
+        let duration = 0.26 * timeScale
+        lastChevronWindow = chevronWindow
         let (host, origin) = prepare(covering: source.union(target).union(chevron), on: screen)
         let from = CGPoint(x: source.midX - origin.x, y: source.midY - origin.y)
         let to = CGPoint(x: target.midX - origin.x, y: target.midY - origin.y)
@@ -77,9 +85,9 @@ enum FoldFlight {
 
         // A soft ring where it lands, tying the icon to what opens under it.
         let ringRect = target.insetBy(dx: -7, dy: -3).offsetBy(dx: -origin.x, dy: -origin.y)
-        pulse(in: host, rect: ringRect, from: 0.72, to: 1.18, delay: duration * 0.7, duration: 0.5 * timeScale)
+        pulse(in: host, rect: ringRect, from: 0.72, to: 1.18, delay: duration * 0.7, duration: 0.36 * timeScale)
 
-        finish(after: duration * 0.7 + 0.5 * timeScale)
+        finish(after: duration * 0.7 + 0.36 * timeScale)
     }
 
     /// Flies the last opened icon from the menu bar back into the Fold icon.
@@ -89,7 +97,7 @@ enum FoldFlight {
         self.landed = nil
         let chevron = FoldChevron.frame(of: landed.chevronWindow, on: landed.screen) ?? landed.chevron
         let dark = landed.chevronWindow?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let duration = 0.36 * timeScale
+        let duration = 0.26 * timeScale
         let (host, origin) = prepare(covering: landed.frame.union(chevron), on: landed.screen)
         let from = CGPoint(x: landed.frame.midX - origin.x, y: landed.frame.midY - origin.y)
         let to = CGPoint(x: chevron.midX - origin.x, y: chevron.midY - origin.y)
@@ -112,9 +120,9 @@ enum FoldFlight {
 
         // The Fold icon takes it in: a ring closing on it.
         let ringRect = chevron.insetBy(dx: 1, dy: 2).offsetBy(dx: -origin.x, dy: -origin.y)
-        pulse(in: host, rect: ringRect, from: 1.3, to: 0.92, delay: duration * 0.55, duration: 0.42 * timeScale)
+        pulse(in: host, rect: ringRect, from: 1.3, to: 0.92, delay: duration * 0.55, duration: 0.3 * timeScale)
 
-        finish(after: duration * 0.55 + 0.42 * timeScale)
+        finish(after: duration * 0.55 + 0.3 * timeScale)
     }
 
     // MARK: Link outline
@@ -215,8 +223,8 @@ enum FoldFlight {
         outline.frame = host.bounds
         outline.path = path
         outline.fillColor = nil
-        outline.strokeColor = NSColor.controlAccentColor.withAlphaComponent(0.85).cgColor
-        outline.lineWidth = 1.5
+        outline.strokeColor = ink.withAlphaComponent(0.45).cgColor
+        outline.lineWidth = 1
         outline.lineJoin = .round
         host.addSublayer(outline)
 
@@ -291,10 +299,9 @@ enum FoldFlight {
             roundedRect: CGRect(origin: .zero, size: rect.size),
             cornerWidth: rect.height / 2, cornerHeight: rect.height / 2, transform: nil
         )
-        let accent = NSColor.controlAccentColor
-        ring.strokeColor = accent.withAlphaComponent(0.9).cgColor
-        ring.fillColor = accent.withAlphaComponent(0.14).cgColor
-        ring.lineWidth = 1.5
+        ring.strokeColor = ink.withAlphaComponent(0.55).cgColor
+        ring.fillColor = ink.withAlphaComponent(0.1).cgColor
+        ring.lineWidth = 1
         ring.opacity = 0
         host.addSublayer(ring)
 

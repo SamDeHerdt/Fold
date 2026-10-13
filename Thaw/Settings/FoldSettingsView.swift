@@ -919,7 +919,8 @@ private struct FoldPreview: View {
                 motion: motion,
                 pourCenterY: pourCenterY,
                 slotCount: images.count,
-                cornerRadius: isRow ? nil : 18
+                cornerRadius: isRow ? nil : 18,
+                columns: arrangement == .grid ? max(1, columns) : 1
             ))
     }
 }
