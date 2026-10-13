@@ -64,7 +64,8 @@ final class IceBarPanel: NSPanel {
     private func startFoldHoverWatch() {
         foldHoverTask?.cancel()
         foldPointerOutsideSince = nil
-        let closesOnLeave = appState?.settings.general.showOnHover == true
+        // A shortcut-opened drawer stays put wherever the pointer is.
+        let closesOnLeave = appState?.settings.general.showOnHover == true && !foldMorph.keyboardActive
         foldHoverTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -132,6 +133,52 @@ final class IceBarPanel: NSPanel {
             }
         } else {
             foldPointerOutsideSince = .now
+        }
+    }
+
+    override var canBecomeKey: Bool {
+        // Takes the keyboard only when opened with the shortcut (see show()).
+        Constants.bundleIdentifier == "com.samdeherdt.fold" ? true : super.canBecomeKey
+    }
+
+    private var foldTypeBuffer = ""
+    private var foldTypeBufferDate = Date.distantPast
+
+    private func foldMoveSelection(by delta: Int) {
+        let items = foldMorph.keyItems
+        guard !items.isEmpty else { return }
+        let current = items.firstIndex { $0.id == foldMorph.selectedWindowID }
+        let next = current.map { min(max($0 + delta, 0), items.count - 1) } ?? (delta < 0 ? items.count - 1 : 0)
+        foldMorph.selectedWindowID = items[next].id
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard Constants.bundleIdentifier == "com.samdeherdt.fold", foldMorph.isOpen else {
+            super.keyDown(with: event)
+            return
+        }
+        switch event.keyCode {
+        case 53: // Escape
+            hide()
+        case 123, 126: // Left, Up
+            foldMoveSelection(by: -1)
+        case 124, 125: // Right, Down
+            foldMoveSelection(by: 1)
+        case 36, 76, 49: // Return, Enter, Space
+            if foldMorph.selectedWindowID != nil { foldMorph.activateRequest += 1 }
+        default:
+            // Type a few letters to jump to an app by name.
+            guard let typed = event.charactersIgnoringModifiers?.lowercased(), !typed.isEmpty,
+                  typed.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) })
+            else { return }
+            if Date.now.timeIntervalSince(foldTypeBufferDate) > 0.8 { foldTypeBuffer = "" }
+            foldTypeBuffer += typed
+            foldTypeBufferDate = .now
+            if let match = foldMorph.keyItems.first(where: { $0.name.lowercased().hasPrefix(foldTypeBuffer) })
+                ?? foldMorph.keyItems.first(where: { $0.name.lowercased().contains(foldTypeBuffer) })
+            {
+                foldMorph.selectedWindowID = match.id
+            }
         }
     }
 
@@ -364,6 +411,8 @@ final class IceBarPanel: NSPanel {
         // before updating the caches.
         foldCloseGeneration += 1
         ignoresMouseEvents = false
+        foldMorph.keyboardActive = triggeredByHotkey
+        foldMorph.selectedWindowID = nil
         foldMorph.isOpen = true
         if Constants.bundleIdentifier == "com.samdeherdt.fold" {
             applyFoldAppearance()
@@ -373,6 +422,11 @@ final class IceBarPanel: NSPanel {
             updateFoldPassThrough()
         }
         defer {
+            // Opened with the shortcut: take the keyboard (without activating
+            // Fold) so arrows, Return and Esc drive the drawer.
+            if Constants.bundleIdentifier == "com.samdeherdt.fold", triggeredByHotkey {
+                makeKey()
+            }
             // Only translucent looks need to know what's behind the bar.
             let look = FoldLook.current
             let glass = UserDefaults.standard.string(forKey: FoldKey.glass) ?? "system"
@@ -651,6 +705,16 @@ private struct IceBarContentView: View {
         FoldMotion(rawValue: foldMotion) ?? .liquid
     }
 
+    /// Hands the icon order to the panel for arrow keys and type-to-jump, and
+    /// starts the selection on the icon nearest the menu-bar icon.
+    private func publishKeyItems() {
+        let keyItems = items.map { FoldKeyItem(id: $0.windowID, name: $0.displayName) }
+        if morph.keyItems != keyItems { morph.keyItems = keyItems }
+        if morph.keyboardActive, morph.selectedWindowID == nil {
+            morph.selectedWindowID = keyItems.last?.id
+        }
+    }
+
     /// Transparent strip over the menu bar that the liquid pour starts in.
     private var pourInset: CGFloat {
         layout == .horizontal ? motion.pourInset(menuBarHeight: screen.getMenuBarHeightEstimate()) : 0
@@ -801,7 +865,12 @@ private struct IceBarContentView: View {
             """)
         }
         .onFrameChange(update: $frame)
-        .onAppear { setMorph(open: true) }
+        .environment(morph)
+        .onAppear {
+            setMorph(open: true)
+            publishKeyItems()
+        }
+        .onChange(of: items.map(\.windowID)) { publishKeyItems() }
         .onChange(of: morph.isOpen) { _, isOpen in setMorph(open: isOpen) }
         .task(id: section) {
             cacheGracePeriodActive = true
@@ -912,6 +981,7 @@ private struct IceBarContentView: View {
             let isLightBackground = !foldUsesLightIcons
             switch layout {
             case .horizontal:
+                ScrollViewReader { scroller in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: itemSpacing) {
                         ForEach(items, id: \.windowID) { item in
@@ -932,9 +1002,14 @@ private struct IceBarContentView: View {
                 }
                 .environment(\.isScrollEnabled, true)
                 .defaultScrollAnchor(.trailing)
+                .onChange(of: morph.selectedWindowID) { _, selected in
+                    guard let selected else { return }
+                    withAnimation(.easeOut(duration: 0.15)) { scroller.scrollTo(selected, anchor: .center) }
+                }
                 .scrollIndicatorsFlash(trigger: scrollIndicatorsFlashTrigger)
                 .task {
                     scrollIndicatorsFlashTrigger += 1
+                }
                 }
 
             case .vertical:
@@ -1017,6 +1092,11 @@ private struct IceBarItemView: View {
     let menuBarManager: MenuBarManager
 
     @State private var isHovered = false
+    @Environment(FoldMorph.self) private var foldMorph: FoldMorph?
+
+    private var isKeySelected: Bool {
+        foldMorph?.keyboardActive == true && foldMorph?.selectedWindowID == item.windowID
+    }
 
     let item: MenuBarItem
     let section: MenuBarSection.Name
@@ -1136,7 +1216,7 @@ private struct IceBarItemView: View {
                 .foregroundStyle(isLightBackground ? .black : .white)
                 .background {
                     Capsule()
-                        .fill((isLightBackground ? Color.black : Color.white).opacity(isHovered ? 0.15 : 0))
+                        .fill((isLightBackground ? Color.black : Color.white).opacity(isKeySelected ? 0.28 : isHovered ? 0.15 : 0))
                         .padding(.vertical, 3)
                 }
                 .contentShape(Rectangle())
@@ -1152,6 +1232,10 @@ private struct IceBarItemView: View {
                     )
                 }
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
+                .animation(.easeOut(duration: 0.12), value: isKeySelected)
+                .onChange(of: foldMorph?.activateRequest) {
+                    if isKeySelected { leftClickAction() }
+                }
                 .accessibilityLabel(item.displayName)
                 .accessibilityAction(named: "left click", leftClickAction)
                 .accessibilityAction(named: "right click", rightClickAction)

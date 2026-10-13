@@ -231,6 +231,21 @@ final class FoldMorph {
     /// drawer opens. Translucent looks pick their icon colour from it, since
     /// Liquid Glass takes on whatever is behind it. Nil until first sampled.
     var backdropIsBright: Bool?
+
+    // Keyboard control (drawer opened with the shortcut).
+    /// True while the drawer holds the keyboard.
+    var keyboardActive = false
+    /// The icon the arrow keys are on.
+    var selectedWindowID: CGWindowID?
+    /// Bumped to make the selected icon open, as if clicked.
+    var activateRequest = 0
+    /// Icons in display order, for arrow keys and type-to-jump.
+    var keyItems: [FoldKeyItem] = []
+}
+
+struct FoldKeyItem: Equatable {
+    let id: CGWindowID
+    let name: String
 }
 
 enum FoldBackdrop {
