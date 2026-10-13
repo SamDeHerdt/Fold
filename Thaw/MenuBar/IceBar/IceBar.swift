@@ -544,7 +544,8 @@ final class IceBarPanel: NSPanel {
         foldHoverTask = nil
         // After a click on an icon the drawer gets out of the way at once;
         // the icon's flight carries the eye instead of the close animation.
-        let closeDelay = foldQuickClose ? min(FoldMotion.current.closeDelay, 0.07) : FoldMotion.current.closeDelay
+        let quick = foldQuickClose
+        let closeDelay = quick ? min(FoldMotion.current.closeDelay, 0.17) : FoldMotion.current.closeDelay
         foldQuickClose = false
         guard
             Constants.bundleIdentifier == "com.samdeherdt.fold",
@@ -561,6 +562,15 @@ final class IceBarPanel: NSPanel {
         foldMorph.isOpen = false
         appState?.navigationState.isIceBarPresented = false
         ignoresMouseEvents = true
+        if quick {
+            // The motion's own close has no time to finish, so the whole
+            // drawer fades with it instead of being cut off mid-way.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = closeDelay
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                animator().alphaValue = 0
+            }
+        }
         let generation = foldCloseGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + closeDelay) { [weak self] in
             guard let self, foldCloseGeneration == generation else { return }
@@ -576,6 +586,7 @@ final class IceBarPanel: NSPanel {
         contentView = nil
         orderOut(nil)
         super.close()
+        alphaValue = 1
         currentSection = nil
         appState?.navigationState.isIceBarPresented = false
     }

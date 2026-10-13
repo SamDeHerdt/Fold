@@ -58,7 +58,7 @@ enum FoldFlight {
         )
         landed = Landed(image: image, frame: target, chevron: chevron, chevronWindow: chevronWindow, screen: screen)
 
-        let duration = 0.26 * timeScale
+        let duration = 0.34 * timeScale
         lastChevronWindow = chevronWindow
         let (host, origin) = prepare(covering: source.union(target).union(chevron), on: screen)
         let from = CGPoint(x: source.midX - origin.x, y: source.midY - origin.y)
@@ -97,7 +97,7 @@ enum FoldFlight {
         self.landed = nil
         let chevron = FoldChevron.frame(of: landed.chevronWindow, on: landed.screen) ?? landed.chevron
         let dark = landed.chevronWindow?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let duration = 0.26 * timeScale
+        let duration = 0.34 * timeScale
         let (host, origin) = prepare(covering: landed.frame.union(chevron), on: landed.screen)
         let from = CGPoint(x: landed.frame.midX - origin.x, y: landed.frame.midY - origin.y)
         let to = CGPoint(x: chevron.midX - origin.x, y: chevron.midY - origin.y)
