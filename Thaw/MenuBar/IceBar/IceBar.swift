@@ -753,7 +753,7 @@ private struct IceBarContentView: View {
 
     /// Transparent strip over the menu bar that the liquid pour starts in.
     private var pourInset: CGFloat {
-        layout == .horizontal ? motion.pourInset(menuBarHeight: screen.getMenuBarHeightEstimate()) : 0
+        motion.pourInset(menuBarHeight: screen.getMenuBarHeightEstimate())
     }
 
     /// The menu-bar button's vertical centre, measured from the bar's top edge.

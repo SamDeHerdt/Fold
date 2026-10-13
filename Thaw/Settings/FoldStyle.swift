@@ -188,10 +188,10 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         poursFromButton ? menuBarHeight : 0
     }
 
-    /// The pour choreography is built around a single row of icons; in grid
-    /// and column arrangements Liquid and Bubbles fall back to Pop.
-    func effective(inRow isRow: Bool) -> FoldMotion {
-        !isRow && usesBlobs ? .pop : self
+    /// Every motion plays in every arrangement; rows, columns and grids each
+    /// get their own blob choreography in `FoldMorphReveal`.
+    func effective(inRow _: Bool) -> FoldMotion {
+        self
     }
 }
 
@@ -577,6 +577,105 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         return blobs
     }
 
+    /// The same choreography for a column or grid: the drop lands on the top
+    /// row, balls burst outwards over the whole panel (nearest the menu-bar
+    /// icon first) and a rounded panel grows over them.
+    private func gooPanelBlobs(in size: CGSize, radius: CGFloat) -> [(CGRect, CGFloat?)] {
+        let p: CGFloat = max(progress, 0)
+        let w: CGFloat = size.width
+        let h: CGFloat = size.height
+        let anchor: CGFloat = min(max(anchorX ?? w / 2, 0), w)
+        let inflate: CGFloat = motion == .liquid ? Self.gooBlur * 0.45 : 0
+        var blobs: [(CGRect, CGFloat?)] = []
+
+        func ease(_ t: CGFloat) -> CGFloat {
+            let u = Self.unit(t)
+            return 1 - pow(1 - u, 3)
+        }
+        func easeBack(_ t: CGFloat) -> CGFloat {
+            let u = Self.unit(t) - 1
+            return 1 + 2.4 * u * u * u + 1.4 * u * u
+        }
+        /// `d` is the diameter as it should look; the threshold's erosion is
+        /// already accounted for.
+        func circle(_ x: CGFloat, _ y: CGFloat, _ d: CGFloat) -> (CGRect, CGFloat?) {
+            let dd = max(0, d)
+            return (CGRect(x: x - dd / 2, y: y - dd / 2, width: dd, height: dd), nil)
+        }
+
+        // A lattice of ball positions covering the panel, at most ~28 balls.
+        var cell: CGFloat = 40
+        var cols = 1
+        var rows = 1
+        repeat {
+            cols = max(1, Int((w / cell).rounded()))
+            rows = max(1, Int((h / cell).rounded()))
+            cell *= 1.2
+        } while cols * rows > 28
+        let ball: CGFloat = min(max(w / CGFloat(cols), h / CGFloat(rows)) * 1.2, min(w, h))
+        var slots: [CGPoint] = []
+        for r in 0 ..< rows {
+            for c in 0 ..< cols {
+                let x = w * (CGFloat(c) + 0.5) / CGFloat(cols)
+                let y = h * (CGFloat(r) + 0.5) / CGFloat(rows)
+                slots.append(CGPoint(
+                    x: min(max(x, ball / 2), max(ball / 2, w - ball / 2)),
+                    y: min(max(y, ball / 2), max(ball / 2, h - ball / 2))
+                ))
+            }
+        }
+        func distance(_ point: CGPoint) -> CGFloat { hypot(point.x - anchor, point.y) }
+        let order = slots.indices.sorted { distance(slots[$0]) < distance(slots[$1]) }
+        let landing = CGPoint(x: min(max(anchor, ball / 2), max(ball / 2, w - ball / 2)), y: ball / 2)
+
+        /// The panel that grows over the balls, from the landing point.
+        func panel(_ fuse: CGFloat) -> (CGRect, CGFloat?) {
+            let pw: CGFloat = ball + (w - ball) * fuse
+            let ph: CGFloat = ball + (h - ball) * fuse
+            let x: CGFloat = min(max(anchor - pw / 2, 0), max(0, w - pw))
+            return (CGRect(x: x, y: 0, width: pw, height: ph), min(radius + inflate * 0.5, min(pw, ph) / 2))
+        }
+
+        if motion == .bubbles {
+            let step: CGFloat = min(0.045, 0.36 / CGFloat(max(slots.count, 1)))
+            for (rank, index) in order.enumerated() {
+                let t: CGFloat = (p - 0.02 - CGFloat(rank) * step) / 0.34
+                guard t > 0 else { continue }
+                let rise: CGFloat = 7 * (1 - ease(t))
+                blobs.append(circle(slots[index].x, slots[index].y + rise, ball * 0.8 * easeBack(t)))
+            }
+            let fuse: CGFloat = ease((p - 0.66) / 0.3)
+            if fuse > 0 { blobs.append(panel(fuse)) }
+            return blobs
+        }
+
+        // 1. Button blob: swells, then drains into the drop.
+        let swell: CGFloat = Self.unit(p / 0.12)
+        let drain: CGFloat = Self.unit((p - 0.22) / 0.33)
+        let buttonD: CGFloat = Self.seed.height * (0.9 + 0.35 * swell) * (1 - drain)
+        if buttonD > 1 { blobs.append(circle(anchor, pourCenterY, buttonD + inflate * 2)) }
+
+        // 2. The drop falls onto the top row.
+        let fall: CGFloat = ease((p - 0.06) / 0.34)
+        let dropY: CGFloat = pourCenterY + (landing.y - pourCenterY) * fall
+        if p > 0.04 { blobs.append(circle(landing.x + (anchor - landing.x) * (1 - fall), dropY, ball * (0.6 + 0.4 * fall))) }
+
+        // 3. Burst: balls spread from the drop over the whole panel.
+        let step: CGFloat = min(0.035, 0.26 / CGFloat(max(slots.count, 1)))
+        for (rank, index) in order.enumerated() {
+            let t: CGFloat = ease((p - 0.32 - CGFloat(rank) * step) / 0.4)
+            guard t > 0 else { continue }
+            let x: CGFloat = landing.x + (slots[index].x - landing.x) * t
+            let y: CGFloat = landing.y + (slots[index].y - landing.y) * t
+            blobs.append(circle(x, y, ball * (0.6 + 0.4 * t)))
+        }
+
+        // 4. Fuse: the panel grows over the balls and squares them off.
+        let fuse: CGFloat = ease((p - 0.7) / 0.3)
+        if fuse > 0 { blobs.append(panel(fuse)) }
+        return blobs
+    }
+
     /// The real capsule fades in underneath before the blobs fade off the top,
     /// so the hand-off never shows two half-transparent layers.
     private var capsuleOpacity: Double {
@@ -715,7 +814,11 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         let pad = Self.gooPadding
         let top: CGFloat = min(0, pourCenterY - Self.seed.height) - pad
         let canvas = CGRect(x: -pad, y: top, width: size.width + pad * 2, height: size.height + pad - top)
-        let blobs = gooBlobs(in: size)
+        let blobs: [(CGRect, CGFloat?)] = if let cornerRadius {
+            gooPanelBlobs(in: size, radius: cornerRadius)
+        } else {
+            gooBlobs(in: size).map { ($0, nil) }
+        }
         let gooey = motion == .liquid
         return FoldGooFill()
             .frame(width: canvas.width, height: canvas.height)
@@ -726,9 +829,14 @@ struct FoldMorphReveal: ViewModifier, Animatable {
                         context.addFilter(.blur(radius: Self.gooBlur))
                     }
                     context.drawLayer { layer in
-                        for blob in blobs {
+                        for (blob, radius) in blobs {
                             let local = blob.offsetBy(dx: -canvas.minX, dy: -canvas.minY)
-                            layer.fill(Capsule().path(in: local), with: .color(.black))
+                            let path = if let radius {
+                                RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: local)
+                            } else {
+                                Capsule().path(in: local)
+                            }
+                            layer.fill(path, with: .color(.black))
                         }
                     }
                 }
