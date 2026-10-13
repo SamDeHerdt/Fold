@@ -473,10 +473,10 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
                 .background(foldMeshGradient(), in: shape)
                 .overlay(shape.strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5))
         case .paper:
+            // The shadow belongs to the card, not to the icons on it.
             content
-                .background(foldPaperColor, in: shape)
+                .background(foldPaperColor.shadow(.drop(color: .black.opacity(0.2), radius: 5, y: 2)), in: shape)
                 .overlay(shape.strokeBorder(Color.black.opacity(0.1), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
         case .outline:
             content
                 .background((isDark ? Color.black : Color.white).opacity(0.28), in: shape)
