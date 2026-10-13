@@ -24,7 +24,15 @@ FOLD_BUILD_DIR="$BUILD" FOLD_OUT="$OUT" "$REPO/fold/build.sh"
 ZIP="$OUT/Fold-$VERSION.zip"
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/Fold.app" "$ZIP"
-SIGNATURE="$("$BUILD/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" --account fold "$ZIP")"
+# The first keychain read after a while can fail while the keychain unlocks.
+SIGNATURE=""
+for attempt in 1 2 3 4; do
+  if SIGNATURE="$("$BUILD/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" --account fold "$ZIP")"; then break; fi
+  echo "sign_update failed (attempt $attempt); retrying…" >&2
+  SIGNATURE=""
+  sleep 3
+done
+[ -n "$SIGNATURE" ] || { echo "Could not sign $ZIP with the 'fold' key in the login keychain." >&2; exit 1; }
 
 cat > "$OUT/appcast.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
