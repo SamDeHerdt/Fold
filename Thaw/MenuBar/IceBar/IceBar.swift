@@ -137,6 +137,22 @@ final class IceBarPanel: NSPanel {
 
     /// A vertical wheel can't scroll a horizontal strip; turn it sideways.
     override func sendEvent(_ event: NSEvent) {
+        // A click on the strip over the menu-bar icon belongs to the icon.
+        // Click-through normally hands it over, but if this window still
+        // gets it (the pointer arrived between checks), act on it here.
+        if Constants.bundleIdentifier == "com.samdeherdt.fold",
+           [.leftMouseDown, .rightMouseDown, .rightMouseUp].contains(event.type),
+           let chevron = appState?.menuBarManager.controlItem(withName: .visible),
+           let chevronFrame = chevron.window?.frame,
+           chevronFrame.insetBy(dx: -3, dy: -3).contains(FoldPointer.location)
+        {
+            switch event.type {
+            case .rightMouseUp: chevron.foldHandleForwardedClick(isRightClick: true)
+            case .leftMouseDown: chevron.foldHandleForwardedClick(isRightClick: false)
+            default: break
+            }
+            return
+        }
         guard
             event.type == .scrollWheel,
             event.phase.isEmpty, event.momentumPhase.isEmpty,
@@ -357,7 +373,13 @@ final class IceBarPanel: NSPanel {
             updateFoldPassThrough()
         }
         defer {
-            if Constants.bundleIdentifier == "com.samdeherdt.fold" { sampleFoldBackdrop(on: screen) }
+            // Only translucent looks need to know what's behind the bar.
+            let look = FoldLook.current
+            let glass = UserDefaults.standard.string(forKey: FoldKey.glass) ?? "system"
+            let ownsItsTone = look.forcesLightIcons || look == .solid || (look == .glass && glass == "tinted")
+            if Constants.bundleIdentifier == "com.samdeherdt.fold", !ownsItsTone {
+                sampleFoldBackdrop(on: screen)
+            }
         }
         appState.navigationState.isIceBarPresented = true
         currentSection = section

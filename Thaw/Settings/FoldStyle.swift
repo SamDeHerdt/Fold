@@ -103,11 +103,11 @@ enum FoldMotion: String, CaseIterable, Identifiable {
 
     private var baseOpenAnimation: Animation? {
         switch self {
-        case .liquid: .spring(duration: 0.75, bounce: 0.22)
-        case .bubbles: .spring(duration: 0.7, bounce: 0.25)
-        case .pop: .spring(duration: 0.45, bounce: 0.45)
-        case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.42)
-        case .elastic: .spring(duration: 0.65, bounce: 0.55)
+        case .liquid: .spring(duration: 0.5, bounce: 0.2)
+        case .bubbles: .spring(duration: 0.45, bounce: 0.22)
+        case .pop: .spring(duration: 0.35, bounce: 0.4)
+        case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
+        case .elastic: .spring(duration: 0.5, bounce: 0.5)
         case .unfold: .spring(duration: 0.35, bounce: 0.3)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.25)
         case .fade: .easeOut(duration: 0.15)
@@ -117,8 +117,8 @@ enum FoldMotion: String, CaseIterable, Identifiable {
 
     private var baseCloseAnimation: Animation? {
         switch self {
-        case .liquid: .timingCurve(0.22, 1, 0.36, 1, duration: 0.35)
-        case .bubbles: .timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
+        case .liquid: .timingCurve(0.22, 1, 0.36, 1, duration: 0.24)
+        case .bubbles: .timingCurve(0.22, 1, 0.36, 1, duration: 0.22)
         case .pop: .easeIn(duration: 0.16)
         case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.24)
         case .elastic: .timingCurve(0.22, 1, 0.36, 1, duration: 0.2)
@@ -136,8 +136,8 @@ enum FoldMotion: String, CaseIterable, Identifiable {
 
     private var baseCloseDelay: TimeInterval {
         switch self {
-        case .liquid: 0.35
-        case .bubbles: 0.3
+        case .liquid: 0.24
+        case .bubbles: 0.22
         case .pop: 0.16
         case .iris: 0.24
         case .elastic: 0.2
@@ -463,8 +463,8 @@ struct FoldMorphReveal: ViewModifier, Animatable {
     private var contentOpacity: Double {
         switch motion {
         // Pouring motions: icons wait until the bar has fused under them.
-        case .liquid: Double(Self.unit((progress - 0.78) / 0.18))
-        case .bubbles: Double(Self.unit((progress - 0.78) / 0.18))
+        case .liquid: Double(Self.unit((progress - 0.68) / 0.2))
+        case .bubbles: Double(Self.unit((progress - 0.68) / 0.2))
         case .unfold: Double(Self.unit((progress - 0.25) / 0.6))
         case .pop: Double(Self.unit(progress / 0.4))
         case .iris: Double(Self.unit((progress - 0.1) / 0.5))
@@ -484,10 +484,6 @@ struct FoldMorphReveal: ViewModifier, Animatable {
 
     private var dropOffset: CGFloat {
         motion == .drop ? -10 * (1 - min(progress, 1)) : 0
-    }
-
-    private var contentBlur: CGFloat {
-        motion == .none ? 0 : max(0, 1 - progress) * 2
     }
 
     /// Pop springs out of the icon; Elastic drops and wobbles like rubber.
@@ -512,7 +508,6 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         let anchorInWindow = anchorInWindow
         return content
             .opacity(contentOpacity)
-            .blur(radius: contentBlur)
             .mask(alignment: .topLeading) {
                 GeometryReader { geometry in
                     let reveal = local(geometry)

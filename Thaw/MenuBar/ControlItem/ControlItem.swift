@@ -607,8 +607,15 @@ final class ControlItem {
         guard identifier == .visible, Constants.bundleIdentifier == "com.samdeherdt.fold" else { return }
         foldHoverTask?.cancel()
         foldHoverTask = Task { @MainActor [weak self] in
+            var ticks = 0
+            let started = Date.now
             while !Task.isCancelled {
                 guard let self else { return }
+                ticks += 1
+                if ticks == 100 {
+                    let average = Date.now.timeIntervalSince(started) / 100 * 1000
+                    diagLog.notice("Fold hover watch: average tick \(Int(average)) ms (target 80)")
+                }
                 checkFoldChevronHover()
                 try? await Task.sleep(for: .milliseconds(80))
             }
@@ -711,6 +718,19 @@ final class ControlItem {
         quit.target = NSApp
         menu.addItem(quit)
         return menu
+    }
+
+    /// A click that landed on the drawer's strip over this icon instead of on
+    /// the icon itself. The drawer forwards it here so it always works.
+    func foldHandleForwardedClick(isRightClick: Bool) {
+        if isRightClick {
+            foldHoverArmed = false
+            foldHoverSuppressedUntil = .now.addingTimeInterval(1)
+            showMenu()
+        } else {
+            foldHoverArmed = false
+            appState?.menuBarManager.iceBarPanel.hide()
+        }
     }
 
     @objc private func foldOpenDrawer() {

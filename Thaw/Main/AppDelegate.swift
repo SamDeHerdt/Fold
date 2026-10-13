@@ -11,6 +11,9 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Keeps Fold out of App Nap for as long as it runs.
+    private var foldActivity: (any NSObjectProtocol)?
+
     /// The shared app state.
     let appState = AppState()
     private var isPreparingForTermination = false
@@ -128,6 +131,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // not only once settings has been opened.
         if Constants.bundleIdentifier == "com.samdeherdt.fold" {
             appState.startUpdaterIfNeeded()
+            // Fold is always a background app, so App Nap would stretch its
+            // pointer checks (hover open/close, click-through) from tens to
+            // hundreds of milliseconds. Idle system sleep is still allowed.
+            foldActivity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep,
+                reason: "Fold tracks the pointer to open and close its drawer"
+            )
         }
     }
 

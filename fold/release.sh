@@ -24,6 +24,10 @@ FOLD_BUILD_DIR="$BUILD" FOLD_OUT="$OUT" "$REPO/fold/build.sh"
 ZIP="$OUT/Fold-$VERSION.zip"
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/Fold.app" "$ZIP"
+# The keychain dialog names only "sign_update" and Sparkle's generic item
+# label, so say which release is asking before it appears.
+echo "Signing Fold $VERSION (build $BUILD_NUMBER): a keychain prompt for sign_update may follow." >&2
+osascript -e "display notification \"A keychain prompt for sign_update may follow.\" with title \"Signing Fold $VERSION\"" >/dev/null 2>&1 || true
 # The first keychain read after a while can fail while the keychain unlocks.
 SIGNATURE=""
 for attempt in 1 2 3 4; do
