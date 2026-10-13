@@ -204,6 +204,12 @@ final class IceBarPanel: NSPanel {
 
     /// A vertical wheel can't scroll a horizontal strip; turn it sideways.
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .scrollWheel, Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            // Rows move under a still pointer without any "pointer left"
+            // event; drop the hover and tooltip so nothing stays stuck.
+            if foldMorph.hoveredWindowID != nil { foldMorph.hoveredWindowID = nil }
+            CustomTooltipPanel.shared.dismiss()
+        }
         // A click on the strip over the menu-bar icon belongs to the icon.
         // Click-through normally hands it over, but if this window still
         // gets it (the pointer arrived between checks), act on it here.
@@ -445,6 +451,7 @@ final class IceBarPanel: NSPanel {
         ignoresMouseEvents = false
         foldMorph.keyboardActive = triggeredByHotkey
         foldMorph.selectedWindowID = nil
+        foldMorph.hoveredWindowID = nil
         foldMorph.isOpen = true
         if Constants.bundleIdentifier == "com.samdeherdt.fold" {
             applyFoldAppearance()
@@ -1156,6 +1163,13 @@ private struct IceBarItemView: View {
         }
     }
 
+    /// Hover comes from the shared value when there is one (Fold), so only
+    /// one icon is ever lit.
+    private var showsHover: Bool {
+        if let foldMorph { return foldMorph.hoveredWindowID == item.windowID }
+        return isHovered
+    }
+
     private var isKeySelected: Bool {
         foldMorph?.keyboardActive == true && foldMorph?.selectedWindowID == item.windowID
     }
@@ -1267,7 +1281,8 @@ private struct IceBarItemView: View {
     }
 
     /// Column with names: a fixed-width row of icon + app name.
-    private static let namedRowWidth: CGFloat = 190
+    private static let namedRowWidth: CGFloat = 200
+    private static let namedIconColumn: CGFloat = 46
 
     @ViewBuilder
     private func iconAndName(_ image: NSImage, size: CGSize) -> some View {
@@ -1278,8 +1293,9 @@ private struct IceBarItemView: View {
             .resizable()
             .frame(width: size.width, height: size.height)
         if foldMorph?.showsNames == true {
-            HStack(spacing: 6) {
-                icon.frame(width: max(size.width, size.height), alignment: .center)
+            HStack(spacing: 8) {
+                // One fixed icon column, so every name starts at the same x.
+                icon.frame(width: Self.namedIconColumn, alignment: .center)
                 Text(item.displayName)
                     .font(.system(size: 12.5, weight: .medium))
                     .lineLimit(1)
@@ -1300,22 +1316,28 @@ private struct IceBarItemView: View {
                 .foregroundStyle(isLightBackground ? .black : .white)
                 .background {
                     FoldBarShape(radius: foldMorph?.showsNames == true ? 9 : nil)
-                        .fill((isLightBackground ? Color.black : Color.white).opacity(isKeySelected ? 0.28 : isHovered ? 0.15 : 0))
+                        .fill((isLightBackground ? Color.black : Color.white).opacity(isKeySelected ? 0.28 : showsHover ? 0.15 : 0))
                         .padding(.vertical, 3)
                 }
                 .contentShape(Rectangle())
                 .overlay {
                     IceBarItemClickView(
                         item: item,
-                        tooltipDelay: tooltipDelay,
+                        // With names shown, a tooltip would only repeat the name.
+                        tooltipDelay: foldMorph?.showsNames == true ? 86400 : tooltipDelay,
                         leftClickAction: leftClickAction,
                         rightClickAction: rightClickAction,
                         onHover: { hovering in
                             isHovered = hovering
+                            if hovering {
+                                foldMorph?.hoveredWindowID = item.windowID
+                            } else if foldMorph?.hoveredWindowID == item.windowID {
+                                foldMorph?.hoveredWindowID = nil
+                            }
                         }
                     )
                 }
-                .animation(.easeInOut(duration: 0.15), value: isHovered)
+                .animation(.easeInOut(duration: 0.15), value: showsHover)
                 .animation(.easeOut(duration: 0.12), value: isKeySelected)
                 .scaleEffect(cascades && !cascadeIn ? 0.3 : 1)
                 .opacity(cascades && !cascadeIn ? 0 : 1)

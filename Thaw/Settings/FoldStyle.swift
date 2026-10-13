@@ -311,6 +311,9 @@ final class FoldMorph {
     var keyItems: [FoldKeyItem] = []
     /// Column arrangement with names: each icon is a labelled row.
     var showsNames = false
+    /// The one icon the pointer is over. Shared, so a row that scrolls out
+    /// from under a still pointer can't stay highlighted alongside another.
+    var hoveredWindowID: CGWindowID?
     /// The motion in play, so icons can stagger themselves for Cascade.
     var motion = FoldMotion.liquid
 }
