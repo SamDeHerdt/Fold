@@ -179,9 +179,23 @@ struct FoldSettingsContent: View {
             }.pickerStyle(.segmented)
         }
         Section {
+            Picker("Arrangement", selection: arrangementBinding) {
+                Text("Row").tag(IceBarLayout.horizontal)
+                Text("Grid").tag(IceBarLayout.grid)
+                Text("Column").tag(IceBarLayout.vertical)
+            }.pickerStyle(.segmented)
+            if arrangementBinding.wrappedValue == .grid {
+                Stepper(value: gridColumnsBinding, in: 2 ... 12) {
+                    LabeledContent("Icons per row") {
+                        Text("\(gridColumnsBinding.wrappedValue)").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if arrangementBinding.wrappedValue == .horizontal {
             LabeledContent("Length") {
                 Slider(value: lengthBinding, in: Double(FoldWidth.minimum) ... Double(screenCap))
                     .frame(width: 240)
+            }
             }
             LabeledContent("Icon size") {
                 HStack {
@@ -206,7 +220,7 @@ struct FoldSettingsContent: View {
         } header: {
             Text("Layout")
         } footer: {
-            Text(maxWidth > 0 ? "Up to \(Int(lengthBinding.wrappedValue)) pt. More icons scroll." : "As wide as your icons need, up to the screen edge.")
+            Text(layoutFootnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -337,6 +351,41 @@ struct FoldSettingsContent: View {
         Binding(
             get: { maxWidth > 0 ? min(maxWidth, Double(screenCap)) : Double(screenCap) },
             set: { maxWidth = $0 >= Double(screenCap) - 1 ? 0 : $0.rounded() }
+        )
+    }
+
+    private var layoutFootnote: String {
+        switch arrangementBinding.wrappedValue {
+        case .horizontal:
+            maxWidth > 0 ? "Up to \(Int(lengthBinding.wrappedValue)) pt. More icons scroll." : "As wide as your icons need, up to the screen edge."
+        case .grid:
+            "Icons wrap into rows. Liquid and Bubbles open as Pop in this arrangement."
+        case .vertical:
+            "Icons stack in one column. Liquid and Bubbles open as Pop in this arrangement."
+        }
+    }
+
+    /// Applies a change to the drawer's configuration on every known display.
+    private func updateAllDisplays(_ transform: @escaping (DisplayIceBarConfiguration) -> DisplayIceBarConfiguration) {
+        let displays = appState.settings.displaySettings
+        for display in displays.allDisplays() {
+            displays.updateConfiguration(forDisplayUUID: display.id, transform: transform)
+        }
+    }
+
+    private var arrangementBinding: Binding<IceBarLayout> {
+        let displays = appState.settings.displaySettings
+        return Binding(
+            get: { displays.configurationForActiveDisplay().iceBarLayout },
+            set: { layout in updateAllDisplays { $0.withIceBarLayout(layout) } }
+        )
+    }
+
+    private var gridColumnsBinding: Binding<Int> {
+        let displays = appState.settings.displaySettings
+        return Binding(
+            get: { displays.configurationForActiveDisplay().gridColumns },
+            set: { columns in updateAllDisplays { $0.withGridColumns(columns) } }
         )
     }
 

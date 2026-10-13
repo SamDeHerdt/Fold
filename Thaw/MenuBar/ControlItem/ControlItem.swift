@@ -774,7 +774,12 @@ final class ControlItem {
             foldHoverSince = nil
             return
         }
-        guard frame.insetBy(dx: -2, dy: -2).contains(pointer) else {
+        // The icon also appears in other displays' menu bars; hovering any
+        // copy opens the drawer (on that display).
+        let overIcon = frame.insetBy(dx: -2, dy: -2).contains(pointer) || NSScreen.screens.contains { screen in
+            FoldChevron.frame(of: window, on: screen)?.insetBy(dx: -2, dy: -2).contains(pointer) == true
+        }
+        guard overIcon else {
             foldHoverArmed = true
             foldHoverSince = nil
             return

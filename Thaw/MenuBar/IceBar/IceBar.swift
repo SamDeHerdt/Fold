@@ -76,6 +76,12 @@ final class IceBarPanel: NSPanel {
         }
     }
 
+    /// Fold's menu-bar icon on the screen the drawer is on (or would be on).
+    private func foldChevronFrame(on screen: NSScreen?) -> CGRect? {
+        guard let screen = screen ?? shownScreen ?? self.screen else { return nil }
+        return FoldChevron.frame(of: appState?.menuBarManager.controlItem(withName: .visible)?.window, on: screen)
+    }
+
     /// Samples the screen under the bar (below this window) so translucent
     /// looks can choose an icon colour that contrasts with it.
     private func sampleFoldBackdrop(on screen: NSScreen) {
@@ -122,7 +128,7 @@ final class IceBarPanel: NSPanel {
         // Still hovering while over the drawer, the chevron, or the strip of
         // menu bar straight above the drawer that connects the two.
         let drawerColumn = NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: screen.frame.maxY - frame.minY)
-        let chevron = appState?.menuBarManager.controlItem(withName: .visible)?.window?.frame ?? .zero
+        let chevron = foldChevronFrame(on: screen) ?? .zero
         let pointer = FoldPointer.location
         if drawerColumn.insetBy(dx: -8, dy: -8).contains(pointer) || chevron.insetBy(dx: -4, dy: -4).contains(pointer) {
             foldPointerOutsideSince = nil
@@ -190,7 +196,7 @@ final class IceBarPanel: NSPanel {
         if Constants.bundleIdentifier == "com.samdeherdt.fold",
            [.leftMouseDown, .rightMouseDown, .rightMouseUp].contains(event.type),
            let chevron = appState?.menuBarManager.controlItem(withName: .visible),
-           let chevronFrame = chevron.window?.frame,
+           let chevronFrame = foldChevronFrame(on: nil),
            chevronFrame.insetBy(dx: -3, dy: -3).contains(FoldPointer.location)
         {
             switch event.type {
@@ -300,8 +306,9 @@ final class IceBarPanel: NSPanel {
 
         func getOrigin(for iceBarLocation: IceBarLocation) -> CGPoint {
             let menuBarHeight = screen.getMenuBarHeightEstimate()
+            let isRow = appState.settings.displaySettings.configuration(for: screen.displayID).iceBarLayout == .horizontal
             let pourInset = Constants.bundleIdentifier == "com.samdeherdt.fold"
-                ? FoldMotion.current.pourInset(menuBarHeight: menuBarHeight) : 0
+                ? FoldMotion.current.effective(inRow: isRow).pourInset(menuBarHeight: menuBarHeight) : 0
             let defaultOriginY = ((screen.frame.maxY - 1) - menuBarHeight) - frame.height + pourInset
 
             var originForRightOfScreen: CGPoint {
@@ -355,7 +362,11 @@ final class IceBarPanel: NSPanel {
                     return originForRightOfScreen
                 }
 
-                return CGPoint(x: (itemBounds.midX - frame.width / 2).clamped(to: lowerBound ... upperBound), y: defaultOriginY)
+                // Fold: the icon's copy on this screen, not the real window's
+                // position on whichever display hosts it.
+                let midX = Constants.bundleIdentifier == "com.samdeherdt.fold"
+                    ? (foldChevronFrame(on: screen)?.midX ?? itemBounds.midX) : itemBounds.midX
+                return CGPoint(x: (midX - frame.width / 2).clamped(to: lowerBound ... upperBound), y: defaultOriginY)
             case .leftAligned:
                 let lowerBound = screen.frame.minX
                 let upperBound = screen.frame.maxX - frame.width
@@ -381,6 +392,10 @@ final class IceBarPanel: NSPanel {
 
         let location = appState.settings.displaySettings.iceBarLocation(for: screen.displayID)
         setFrameOrigin(getOrigin(for: location))
+        if let chevron = foldChevronFrame(on: screen) {
+            let anchor = chevron.midX - frame.minX
+            if foldMorph.anchorWindowX != anchor { foldMorph.anchorWindowX = anchor }
+        }
     }
 
     /// Shows the panel on the given screen, displaying the given
@@ -674,18 +689,10 @@ private struct IceBarContentView: View {
         FoldWidth.cap(stored: foldMaxWidth, screenWidth: screen.frame.width)
     }
 
-    /// Where the chevron sits, in the drawer window's coordinates, so the
-    /// drawer grows out of it. Mirrors IceBarPanel's icon-anchored origin.
+    /// Where the menu-bar icon sits, in the drawer window's coordinates, so
+    /// the drawer grows out of it (set by the panel when it positions itself).
     private var morphAnchorX: CGFloat? {
-        guard
-            layout == .horizontal,
-            let controlItem = itemManager.itemCache.managedItems.first(matching: .visibleControlItem),
-            let itemBounds = Bridging.getWindowBounds(for: controlItem.windowID)
-        else { return nil }
-        let panelWidth = compactWidth
-        let upper = max(screen.frame.minX, screen.frame.maxX - panelWidth)
-        let panelX = (itemBounds.midX - panelWidth / 2).clamped(to: screen.frame.minX ... upper)
-        return itemBounds.midX - panelX
+        morph.anchorWindowX
     }
 
     /// White icons where the bar is dark. Opaque and tinted looks set their
@@ -702,7 +709,7 @@ private struct IceBarContentView: View {
     }
 
     private var motion: FoldMotion {
-        FoldMotion(rawValue: foldMotion) ?? .liquid
+        (FoldMotion(rawValue: foldMotion) ?? .liquid).effective(inRow: layout == .horizontal)
     }
 
     /// Hands the icon order to the panel for arrow keys and type-to-jump, and
@@ -833,7 +840,7 @@ private struct IceBarContentView: View {
             .padding(.vertical, verticalPadding)
             .foregroundStyle(foldUsesLightIcons ? .white : .black)
             .shadow(color: foldLook == FoldLook.minimal.rawValue ? .black.opacity(0.45) : .clear, radius: 2)
-            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count, anchorInWindow: true))
+            .modifier(FoldMorphReveal(progress: morphProgress, anchorX: morphAnchorX, motion: motion, pourCenterY: pourCenterY, slotCount: items.count, anchorInWindow: true, cornerRadius: layout == .horizontal ? nil : 18))
 
             if configuration.current.borderOnThawBar {
                 clipShape

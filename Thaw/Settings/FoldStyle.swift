@@ -157,6 +157,12 @@ enum FoldMotion: String, CaseIterable, Identifiable {
     func pourInset(menuBarHeight: CGFloat) -> CGFloat {
         poursFromButton ? menuBarHeight : 0
     }
+
+    /// The pour choreography is built around a single row of icons; in grid
+    /// and column arrangements Liquid and Bubbles fall back to Pop.
+    func effective(inRow isRow: Bool) -> FoldMotion {
+        !isRow && poursFromButton ? .pop : self
+    }
 }
 
 /// The surface drawn behind the drawer's icons.
@@ -222,6 +228,25 @@ enum FoldPointer {
     }
 }
 
+/// Where Fold's menu-bar icon is on a given screen, in AppKit coordinates.
+/// The real status-item window lives on one display; the copies macOS draws in
+/// other displays' menu bars aren't windows Fold can query, but menu bars are
+/// laid out from the right, so the copy sits the same distance from its
+/// display's top-right corner.
+enum FoldChevron {
+    static func frame(of window: NSWindow?, on screen: NSScreen) -> CGRect? {
+        guard let window, let home = window.screen ?? NSScreen.screens.first else { return nil }
+        let frame = window.frame
+        guard home != screen else { return frame }
+        return CGRect(
+            x: screen.frame.maxX - (home.frame.maxX - frame.minX),
+            y: screen.frame.maxY - (home.frame.maxY - frame.minY),
+            width: frame.width,
+            height: frame.height
+        )
+    }
+}
+
 /// Open/closed state shared by the drawer panel and its SwiftUI content, so
 /// the panel can let the content morph back into the chevron before it hides.
 @Observable
@@ -231,6 +256,9 @@ final class FoldMorph {
     /// drawer opens. Translucent looks pick their icon colour from it, since
     /// Liquid Glass takes on whatever is behind it. Nil until first sampled.
     var backdropIsBright: Bool?
+    /// The menu-bar icon's centre, in the drawer window's coordinates; set by
+    /// the panel whenever it positions itself. Motions start from here.
+    var anchorWindowX: CGFloat?
 
     // Keyboard control (drawer opened with the shortcut).
     /// True while the drawer holds the keyboard.
@@ -278,6 +306,27 @@ private func foldAuroraGradient() -> LinearGradient {
         startPoint: .leading,
         endPoint: .trailing
     )
+}
+
+/// The bar's outline: a capsule for a single row, a rounded rectangle when the
+/// icons are arranged in a grid or column.
+struct FoldBarShape: InsettableShape {
+    /// Corner radius; nil means a full capsule.
+    var radius: CGFloat?
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        guard let radius else { return Capsule().path(in: r) }
+        let corner = min(radius, min(r.width, r.height) / 2)
+        return RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: r)
+    }
+
+    func inset(by amount: CGFloat) -> FoldBarShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
 }
 
 /// Draws the selected Fold look behind content, in the given shape.
@@ -363,6 +412,8 @@ struct FoldMorphReveal: ViewModifier, Animatable {
     /// bar's own space at draw time (the bar's real position can differ from
     /// any estimate, e.g. when icon widths differ from their cached sizes).
     var anchorInWindow = false
+    /// Corner radius for grid/column bars; nil keeps the single-row capsule.
+    var cornerRadius: CGFloat?
 
     /// This modifier with `anchorX` resolved into the geometry's local space.
     private func local(_ geometry: GeometryProxy) -> FoldMorphReveal {
@@ -531,7 +582,7 @@ struct FoldMorphReveal: ViewModifier, Animatable {
                         Circle().frame(width: c.width, height: c.height).position(x: c.midX, y: c.midY)
                     } else {
                         let r = reveal.barRect(in: geometry.size)
-                        Capsule()
+                        FoldBarShape(radius: cornerRadius)
                             .frame(width: r.width, height: r.height)
                             .position(x: r.midX, y: r.midY)
                     }
@@ -566,7 +617,7 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         return ZStack(alignment: .topLeading) {
             Color.clear
                 .frame(width: bar.width, height: bar.height)
-                .modifier(FoldSurface(shape: Capsule()))
+                .modifier(FoldSurface(shape: FoldBarShape(radius: cornerRadius)))
                 .position(x: bar.midX, y: bar.midY)
                 .opacity(capsuleOpacity)
             if gooAmount > 0 {
