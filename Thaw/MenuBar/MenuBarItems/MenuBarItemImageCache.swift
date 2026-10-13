@@ -1721,6 +1721,21 @@ final class MenuBarItemImageCache: @unchecked Sendable {
         }
     }
 
+    /// Fold: re-captures the hidden icons while nothing is showing them, so a
+    /// change can raise the attention dot. Same capture as the open drawer's.
+    @MainActor
+    func foldRefreshHiddenImages() async {
+        guard let appState else { return }
+        let items = appState.itemManager.itemCache.managedItems(for: .hidden)
+        guard !items.isEmpty else { return }
+        let displayID = Bridging.getActiveMenuBarDisplayID() ?? CGMainDisplayID()
+        guard let screen = NSScreen.screens.first(where: { $0.displayID == displayID }) ?? NSScreen.main else { return }
+        let scale = screen.backingScaleFactor
+        await withCapturePermit {
+            await refreshImages(of: items, scale: scale)
+        }
+    }
+
     /// Runs one capture operation at a time across live and explicit refreshes.
     @MainActor
     func withCapturePermit(_ operation: @MainActor () async -> Void) async {

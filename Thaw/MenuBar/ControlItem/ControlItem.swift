@@ -232,12 +232,15 @@ final class ControlItem {
     /// menu-bar icon carries a dot until the drawer is next opened.
     private var foldHasAttention = false
     private var foldAttentionTask: Task<Void, Never>?
+    private var foldAttentionPollTask: Task<Void, Never>?
+    private var foldLoggedPoll = false
     private var foldSeenImages = [MenuBarItemTag: MenuBarItemImageCache.CapturedImage]()
     private var foldChangeTimes = [MenuBarItemTag: [Date]]()
     private var foldMutedTags = Set<MenuBarItemTag>()
 
     deinit {
         foldAttentionTask?.cancel()
+        foldAttentionPollTask?.cancel()
         foldHoverTask?.cancel()
         foldEngagedObservationTask?.cancel()
         showIceIconObservationTask?.cancel()
@@ -639,6 +642,23 @@ final class ControlItem {
                 noteHiddenImages(images)
             }
         }
+        // Thaw only captures icons while something shows them. Fold looks at
+        // the hidden ones every few seconds so a change can raise the dot.
+        foldAttentionPollTask?.cancel()
+        foldAttentionPollTask = Task { @MainActor [weak self, imageCache = appState.imageCache] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(12))
+                guard let self else { return }
+                guard FoldKey.attentionDotEnabled, !isFoldEngaged, !appState.itemManager.lastMoveOperationOccurred(within: .seconds(3)) else { continue }
+                await imageCache.foldRefreshHiddenImages()
+                if !foldLoggedPoll {
+                    foldLoggedPoll = true
+                    let tags = appState.itemManager.itemCache.managedItems(for: .hidden).map(\.tag)
+                    let cached = tags.filter { imageCache.images[$0] != nil }.count
+                    diagLog.notice("Fold attention: background check running, \(cached) of \(tags.count) hidden icons captured")
+                }
+            }
+        }
 
         foldEngagedObservationTask?.cancel()
         foldEngagedObservationTask = Task { @MainActor [weak self, navigationState = appState.navigationState, itemManager = appState.itemManager] in
@@ -810,6 +830,7 @@ final class ControlItem {
                 diagLog.notice("Fold attention: muting \(tag.description), it changes constantly")
             } else {
                 attention = true
+                if !isFoldEngaged { FoldAttention.shared.tags.insert(tag) }
             }
         }
         guard attention, FoldKey.attentionDotEnabled, !isFoldEngaged, !foldHasAttention else { return }
@@ -880,6 +901,8 @@ final class ControlItem {
         }
         guard engaged != isFoldEngaged else { return }
         isFoldEngaged = engaged
+        // The per-icon dots stay while the drawer is open and go when it closes.
+        if !engaged { FoldAttention.shared.tags.removeAll() }
         updateStatusItem()
         statusItem.button?.highlight(engaged)
         guard engaged else { return }

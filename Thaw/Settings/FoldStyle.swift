@@ -273,6 +273,15 @@ enum FoldPointer {
 /// other displays' menu bars aren't windows Fold can query, but menu bars are
 /// laid out from the right, so the copy sits the same distance from its
 /// display's top-right corner.
+/// The hidden icons that changed since the drawer was last open; the drawer
+/// marks them with a dot so you can see which app wanted attention.
+@MainActor
+@Observable
+final class FoldAttention {
+    static let shared = FoldAttention()
+    var tags = Set<MenuBarItemTag>()
+}
+
 enum FoldChevron {
     static func frame(of window: NSWindow?, on screen: NSScreen) -> CGRect? {
         guard let window, let home = window.screen ?? NSScreen.screens.first else { return nil }

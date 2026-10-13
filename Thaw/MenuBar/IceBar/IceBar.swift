@@ -1311,6 +1311,16 @@ private struct IceBarItemView: View {
             .resizable()
             .frame(width: size.width, height: size.height)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { iconFrame = $0 }
+            .overlay(alignment: .topTrailing) {
+                if foldMorph != nil, FoldAttention.shared.tags.contains(item.tag) {
+                    // This icon changed while the drawer was closed.
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 6, height: 6)
+                        .offset(x: 3, y: 1)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
         if foldMorph?.showsNames == true {
             HStack(spacing: 8) {
                 // One fixed icon column, so every name starts at the same x.
