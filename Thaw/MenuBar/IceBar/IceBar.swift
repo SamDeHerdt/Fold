@@ -635,6 +635,7 @@ private struct IceBarContentView: View {
     @AppStorage(FoldKey.iconSpacing) private var foldIconSpacing = 0.0
     @AppStorage(FoldKey.iconScale) private var foldIconScale = 1.0
     @AppStorage(FoldKey.maxRows) private var foldMaxRows = 8
+    @AppStorage(FoldKey.columnNames) private var foldColumnNames = false
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var morphProgress: CGFloat = 0
@@ -676,7 +677,8 @@ private struct IceBarContentView: View {
     }
 
     private var horizontalPadding: CGFloat {
-        8
+        // A column hugs its icons: about as wide as a row bar is tall.
+        layout == .vertical ? 3 : 8
     }
 
     /// Size the drawer to its icons so every hidden item is reachable. It only
@@ -880,7 +882,9 @@ private struct IceBarContentView: View {
         .onAppear {
             setMorph(open: true)
             publishKeyItems()
+            morph.showsNames = layout == .vertical && foldColumnNames
         }
+        .onChange(of: layout == .vertical && foldColumnNames) { _, shows in morph.showsNames = shows }
         .onChange(of: items.map(\.windowID)) { publishKeyItems() }
         .onChange(of: morph.isOpen) { _, isOpen in setMorph(open: isOpen) }
         .task(id: section) {
@@ -1215,18 +1219,40 @@ private struct IceBarItemView: View {
         return CGSize(width: intrinsic.width * scale, height: maxHeight)
     }
 
+    /// Column with names: a fixed-width row of icon + app name.
+    private static let namedRowWidth: CGFloat = 190
+
+    @ViewBuilder
+    private func iconAndName(_ image: NSImage, size: CGSize) -> some View {
+        let icon = Image(nsImage: image)
+            .renderingMode(.template)
+            .interpolation(.high)
+            .antialiased(true)
+            .resizable()
+            .frame(width: size.width, height: size.height)
+        if foldMorph?.showsNames == true {
+            HStack(spacing: 6) {
+                icon.frame(width: max(size.width, size.height), alignment: .center)
+                Text(item.displayName)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 6)
+            .frame(width: Self.namedRowWidth, height: size.height, alignment: .leading)
+        } else {
+            icon
+        }
+    }
+
     var body: some View {
         if let image {
             let size = targetSize(for: image)
-            Image(nsImage: image)
-                .renderingMode(.template)
-                .interpolation(.high)
-                .antialiased(true)
-                .resizable()
-                .frame(width: size.width, height: size.height)
+            iconAndName(image, size: size)
                 .foregroundStyle(isLightBackground ? .black : .white)
                 .background {
-                    Capsule()
+                    FoldBarShape(radius: foldMorph?.showsNames == true ? 9 : nil)
                         .fill((isLightBackground ? Color.black : Color.white).opacity(isKeySelected ? 0.28 : isHovered ? 0.15 : 0))
                         .padding(.vertical, 3)
                 }

@@ -31,6 +31,11 @@ mv "$APP/Contents/MacOS/Thaw" "$APP/Contents/MacOS/Fold"
   -c "Set :CFBundleVersion $BUILD_NUMBER" \
   "$PLIST"
 
+# Fold's own icon (drawn by fold/icon/make-icon.swift). Dropping
+# CFBundleIconName makes macOS use this .icns instead of Thaw's asset-catalog icon.
+cp "$REPO/fold/icon/Fold.icns" "$APP/Contents/Resources/AppIcon.icns"
+/usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$PLIST" 2>/dev/null || true
+
 # Ad-hoc signature with a stable designated requirement, so Accessibility and
 # Screen Recording grants survive rebuilds and updates.
 codesign --force --deep --sign - "$APP"

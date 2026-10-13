@@ -24,6 +24,8 @@ enum FoldKey {
 
     /// Rows visible in the grid and column arrangements before they scroll.
     static let maxRows = "FoldMaxRowsV1"
+    /// Show each app's name beside its icon in the column arrangement.
+    static let columnNames = "FoldColumnNamesV1"
     /// Show a dot on the menu-bar icon when a hidden icon changes.
     static let attentionDot = "FoldAttentionDotV1"
 
@@ -278,6 +280,8 @@ final class FoldMorph {
     var activateRequest = 0
     /// Icons in display order, for arrow keys and type-to-jump.
     var keyItems: [FoldKeyItem] = []
+    /// Column arrangement with names: each icon is a labelled row.
+    var showsNames = false
 }
 
 struct FoldKeyItem: Equatable {
