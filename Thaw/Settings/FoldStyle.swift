@@ -45,6 +45,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
     case pop
     case iris
     case elastic
+    case hinge
+    case cascade
+    case materialize
     case unfold
     case drop
     case fade
@@ -59,6 +62,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         case .pop: "Pop"
         case .iris: "Iris"
         case .elastic: "Elastic"
+        case .hinge: "Fold"
+        case .cascade: "Cascade"
+        case .materialize: "Materialize"
         case .unfold: "Unfold"
         case .drop: "Drop"
         case .fade: "Fade"
@@ -73,6 +79,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         case .pop: "sparkle"
         case .iris: "camera.aperture"
         case .elastic: "arrow.up.and.down.and.sparkles"
+        case .hinge: "rectangle.portrait.bottomhalf.inset.filled"
+        case .cascade: "ellipsis"
+        case .materialize: "camera.metering.center.weighted"
         case .unfold: "arrow.left.and.right"
         case .drop: "arrow.down"
         case .fade: "circle.lefthalf.filled"
@@ -87,6 +96,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         case .pop: "Springs out of the icon"
         case .iris: "Opens like a lens from the icon"
         case .elastic: "Drops down and wobbles"
+        case .hinge: "Swings down like a hinged flap"
+        case .cascade: "Icons pop in one after another"
+        case .materialize: "Pulls into focus"
         case .unfold: "Stretches out sideways"
         case .drop: "Slides down"
         case .fade: "Fades in"
@@ -119,6 +131,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         case .pop: .spring(duration: 0.35, bounce: 0.4)
         case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.3)
         case .elastic: .spring(duration: 0.5, bounce: 0.5)
+        case .hinge: .spring(duration: 0.45, bounce: 0.28)
+        case .cascade: .spring(duration: 0.3, bounce: 0.2)
+        case .materialize: .timingCurve(0.22, 1, 0.36, 1, duration: 0.32)
         case .unfold: .spring(duration: 0.35, bounce: 0.3)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.25)
         case .fade: .easeOut(duration: 0.15)
@@ -133,6 +148,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         case .pop: .easeIn(duration: 0.16)
         case .iris: .timingCurve(0.22, 1, 0.36, 1, duration: 0.24)
         case .elastic: .timingCurve(0.22, 1, 0.36, 1, duration: 0.2)
+        case .hinge: .timingCurve(0.22, 1, 0.36, 1, duration: 0.2)
+        case .cascade: .easeIn(duration: 0.14)
+        case .materialize: .easeIn(duration: 0.16)
         case .unfold: .timingCurve(0.22, 1, 0.36, 1, duration: 0.22)
         case .drop: .timingCurve(0.22, 1, 0.36, 1, duration: 0.15)
         case .fade: .easeIn(duration: 0.12)
@@ -152,6 +170,9 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         case .pop: 0.16
         case .iris: 0.24
         case .elastic: 0.2
+        case .hinge: 0.2
+        case .cascade: 0.14
+        case .materialize: 0.16
         case .unfold: 0.22
         case .drop: 0.15
         case .fade: 0.12
@@ -186,6 +207,9 @@ enum FoldLook: String, CaseIterable, Identifiable {
     case accent
     case neon
     case aurora
+    case glow
+    case mesh
+    case paper
 
     var id: String { rawValue }
 
@@ -199,12 +223,20 @@ enum FoldLook: String, CaseIterable, Identifiable {
         case .accent: "Accent"
         case .neon: "Neon"
         case .aurora: "Aurora"
+        case .glow: "Glow"
+        case .mesh: "Mesh"
+        case .paper: "Paper"
         }
     }
 
     /// Coloured looks always carry white icons, whatever the appearance.
     var forcesLightIcons: Bool {
-        self == .accent || self == .neon || self == .aurora
+        self == .accent || self == .neon || self == .aurora || self == .glow || self == .mesh
+    }
+
+    /// Paper is a light card whatever the appearance, so its icons are dark.
+    var forcesDarkIcons: Bool {
+        self == .paper
     }
 
     static var current: FoldLook {
@@ -282,6 +314,8 @@ final class FoldMorph {
     var keyItems: [FoldKeyItem] = []
     /// Column arrangement with names: each icon is a labelled row.
     var showsNames = false
+    /// The motion in play, so icons can stagger themselves for Cascade.
+    var motion = FoldMotion.liquid
 }
 
 struct FoldKeyItem: Equatable {
@@ -342,6 +376,49 @@ struct FoldBarShape: InsettableShape {
     }
 }
 
+/// Mesh: a soft multi-colour gradient.
+func foldMeshGradient() -> MeshGradient {
+    MeshGradient(
+        width: 3, height: 2,
+        points: [[0, 0], [0.5, 0], [1, 0], [0, 1], [0.5, 1], [1, 1]],
+        colors: [
+            Color(red: 0.98, green: 0.45, blue: 0.42), Color(red: 0.72, green: 0.36, blue: 0.86), Color(red: 0.28, green: 0.48, blue: 0.95),
+            Color(red: 0.96, green: 0.6, blue: 0.3), Color(red: 0.86, green: 0.34, blue: 0.62), Color(red: 0.2, green: 0.66, blue: 0.82),
+        ]
+    )
+}
+
+let foldPaperColor = Color(red: 0.97, green: 0.95, blue: 0.91)
+
+private let foldGlowColors: [Color] = [
+    Color(red: 1, green: 0.42, blue: 0.5), Color(red: 1, green: 0.72, blue: 0.3), Color(red: 0.45, green: 0.85, blue: 0.75),
+    Color(red: 0.35, green: 0.55, blue: 1), Color(red: 0.75, green: 0.45, blue: 1), Color(red: 1, green: 0.42, blue: 0.5),
+]
+
+/// Glow: a colour border that slowly travels round the bar, with a soft bloom.
+struct FoldGlowBorder<S: InsettableShape>: View {
+    let shape: S
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private func border(angle: Double) -> some View {
+        let gradient = AngularGradient(colors: foldGlowColors, center: .center, angle: .degrees(angle))
+        return ZStack {
+            shape.strokeBorder(gradient, lineWidth: 3).blur(radius: 5).opacity(0.8)
+            shape.strokeBorder(gradient, lineWidth: 1.5)
+        }
+    }
+
+    var body: some View {
+        if reduceMotion {
+            border(angle: 0)
+        } else {
+            TimelineView(.animation) { timeline in
+                border(angle: timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 9) * 40)
+            }
+        }
+    }
+}
+
 /// Draws the selected Fold look behind content, in the given shape.
 struct FoldSurface<S: InsettableShape>: ViewModifier {
     let shape: S
@@ -387,6 +464,19 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
             content
                 .background(foldAuroraGradient(), in: shape)
                 .overlay(shape.strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5))
+        case .glow:
+            content
+                .background(Color(white: 0.06), in: shape)
+                .overlay(FoldGlowBorder(shape: shape))
+        case .mesh:
+            content
+                .background(foldMeshGradient(), in: shape)
+                .overlay(shape.strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5))
+        case .paper:
+            content
+                .background(foldPaperColor, in: shape)
+                .overlay(shape.strokeBorder(Color.black.opacity(0.1), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
         case .outline:
             content
                 .background((isDark ? Color.black : Color.white).opacity(0.28), in: shape)
@@ -548,6 +638,9 @@ struct FoldMorphReveal: ViewModifier, Animatable {
         case .pop: Double(Self.unit(progress / 0.4))
         case .iris: Double(Self.unit((progress - 0.1) / 0.5))
         case .elastic: Double(Self.unit(progress / 0.5))
+        case .hinge: Double(Self.unit(progress / 0.45))
+        case .cascade: Double(Self.unit(progress / 0.2))
+        case .materialize: Double(Self.unit(progress))
         case .drop, .fade: Double(Self.unit(progress))
         case .none: 1
         }
@@ -555,8 +648,9 @@ struct FoldMorphReveal: ViewModifier, Animatable {
 
     private var surfaceOpacity: Double {
         switch motion {
-        case .drop, .fade: Double(Self.unit(progress))
-        case .pop: Double(Self.unit(progress / 0.25))
+        case .drop, .fade, .materialize: Double(Self.unit(progress))
+        case .pop, .cascade: Double(Self.unit(progress / 0.25))
+        case .hinge: Double(Self.unit(progress / 0.3))
         default: 1
         }
     }
@@ -576,12 +670,30 @@ struct FoldMorphReveal: ViewModifier, Animatable {
             let y: CGFloat = 0.15 + 0.85 * p
             // Squash sideways while it stretches down, like rubber.
             return CGSize(width: 1 + (1 - y) * 0.08, height: y)
+        case .cascade:
+            // Origin-aware and subtle: never from zero.
+            let s: CGFloat = 0.94 + 0.06 * p
+            return CGSize(width: s, height: s)
+        case .materialize:
+            let s: CGFloat = 1.07 - 0.07 * min(p, 1)
+            return CGSize(width: s, height: s)
         default:
             return CGSize(width: 1, height: 1)
         }
     }
 
+    /// Fold: degrees the flap still has to swing down, hinged on its top edge.
+    private var hingeAngle: Double {
+        motion == .hinge ? -78 * Double(1 - max(progress, 0)) : 0
+    }
+
+    private var focusBlur: CGFloat {
+        motion == .materialize ? 10 * (1 - Self.unit(progress)) : 0
+    }
+
     func body(content: Content) -> some View {
+        let hingeAngle = hingeAngle
+        let focusBlur = focusBlur
         let scale = scale
         let anchorX = anchorX
         let anchorInWindow = anchorInWindow
@@ -611,11 +723,14 @@ struct FoldMorphReveal: ViewModifier, Animatable {
                 let frame = proxy.frame(in: .global)
                 let width = max(proxy.size.width, 1)
                 let localAnchor = anchorInWindow ? (anchorX ?? frame.midX) - frame.minX : (anchorX ?? width / 2)
-                return effect.scaleEffect(
-                    x: scale.width,
-                    y: scale.height,
-                    anchor: UnitPoint(x: min(max(localAnchor / width, 0), 1), y: 0)
-                )
+                return effect
+                    .scaleEffect(
+                        x: scale.width,
+                        y: scale.height,
+                        anchor: UnitPoint(x: min(max(localAnchor / width, 0), 1), y: 0)
+                    )
+                    .rotation3DEffect(.degrees(hingeAngle), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.7)
+                    .blur(radius: focusBlur)
             }
     }
 
@@ -699,6 +814,12 @@ private struct FoldGooFill: View {
             Rectangle().fill(Color(white: 0.06))
         case .aurora:
             Rectangle().fill(foldAuroraGradient())
+        case .glow:
+            Rectangle().fill(Color(white: 0.06))
+        case .mesh:
+            Rectangle().fill(foldMeshGradient())
+        case .paper:
+            Rectangle().fill(foldPaperColor)
         }
     }
 }

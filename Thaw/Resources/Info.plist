@@ -14,7 +14,7 @@
 		</dict>
 	</array>
 	<key>ThawRepositoryURL</key>
-	<string>https://github.com/thaw-app/Thaw</string>
+	<string>https://github.com/SamDeHerdt/Fold</string>
 	<key>ThawDonateURL</key>
 	<string>https://github.com/sponsors/stonerl</string>
 	<key>ThawMenuBarItemSpacingExecutableURI</key>

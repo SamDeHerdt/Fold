@@ -130,6 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Fold checks its GitHub releases in the background from launch,
         // not only once settings has been opened.
         if Constants.bundleIdentifier == "com.samdeherdt.fold" {
+            // The asset catalogue still carries Thaw's icon, which the Dock
+            // would show while Fold runs; use Fold's own (fold/icon).
+            if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+               let icon = NSImage(contentsOf: url)
+            {
+                NSApp.applicationIconImage = icon
+            }
             appState.startUpdaterIfNeeded()
             // Fold is always a background app, so App Nap would stretch its
             // pointer checks (hover open/close, click-through) from tens to

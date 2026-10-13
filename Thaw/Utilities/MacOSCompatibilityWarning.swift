@@ -64,6 +64,18 @@ enum MacOSCompatibilityWarning {
         let release = version.majorVersion
         let title = String(localized: "macOS \(release) Is Not Yet Supported")
 
+        // Fold has no alpha channel. macOS 27 support needs Fold to move to
+        // Thaw's rewritten 3.0 engine (which itself requires macOS 27), so
+        // point at Fold's own releases rather than Thaw's preview builds.
+        if Bundle.main.bundleIdentifier == "com.samdeherdt.fold" {
+            return Prompt(
+                title: title,
+                message: "This version of Fold doesn't support macOS \(release) yet, so hidden icons may not open or arrange correctly. A macOS \(release) version will appear on Fold's releases page when it's ready.",
+                confirmButtonTitle: "View Fold Releases",
+                action: .openReleasesPage
+            )
+        }
+
         guard canSubscribe, UpdateChannel.alpha.isAvailable(on: version) else {
             return Prompt(
                 title: title,

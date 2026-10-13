@@ -507,7 +507,7 @@ private struct FoldLookSwatch: View {
                     Circle().frame(width: 5, height: 5)
                 }
             }
-            .foregroundStyle(Color.white)
+            .foregroundStyle(look.forcesDarkIcons ? Color.black.opacity(0.75) : Color.white)
         }
     }
 
@@ -531,6 +531,12 @@ private struct FoldLookSwatch: View {
                 .overlay(Capsule().strokeBorder(Color.accentColor, lineWidth: 1.2).shadow(color: .accentColor, radius: 3))
         case .aurora:
             Capsule().fill(LinearGradient(colors: Self.aurora, startPoint: .leading, endPoint: .trailing))
+        case .glow:
+            Capsule().fill(Color(white: 0.06)).overlay(FoldGlowBorder(shape: Capsule()))
+        case .mesh:
+            Capsule().fill(foldMeshGradient())
+        case .paper:
+            Capsule().fill(foldPaperColor)
         }
     }
 }
@@ -612,7 +618,8 @@ private struct FoldPreview: View {
     }
 
     private var iconColor: Color {
-        scheme == .dark || lookValue.forcesLightIcons ? .white : .black
+        if lookValue.forcesDarkIcons { return .black }
+        return scheme == .dark || lookValue.forcesLightIcons ? .white : .black
     }
 
     private static let darkBackdrop: [Color] = [
@@ -813,20 +820,29 @@ private struct FoldPreview: View {
         return named.isEmpty ? ["Wi-Fi", "Power", "Cloud", "Messages", "Assistant", "Passwords", "Music"] : named
     }
 
-    private func icon(_ image: NSImage, cell: Bool) -> some View {
-        Image(nsImage: image)
+    /// Cascade in the preview: how far the icon at `rank` has popped in.
+    private func cascade(rank: Int) -> CGFloat {
+        guard motion == .cascade else { return 1 }
+        return min(1, max(0, (progress - 0.1 - CGFloat(rank) * 0.07) / 0.3))
+    }
+
+    private func icon(_ image: NSImage, cell: Bool, rank: Int = 0) -> some View {
+        let pop = cascade(rank: rank)
+        return Image(nsImage: image)
             .renderingMode(.template)
             .resizable()
             .frame(width: width(of: image), height: iconHeight)
             .frame(width: cell ? cellWidth : nil, height: cell ? barHeight : nil)
+            .scaleEffect(0.6 + 0.4 * pop)
+            .opacity(Double(pop))
     }
 
     @ViewBuilder
     private var icons: some View {
         if isRow {
             HStack(spacing: itemSpacing) {
-                ForEach(Array(images.enumerated()), id: \.offset) { _, image in
-                    icon(image, cell: false)
+                ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                    icon(image, cell: false, rank: images.count - 1 - index)
                 }
             }
         } else if arrangement == .vertical, showsNames {

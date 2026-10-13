@@ -445,7 +445,7 @@ final class IceBarPanel: NSPanel {
             // Only translucent looks need to know what's behind the bar.
             let look = FoldLook.current
             let glass = UserDefaults.standard.string(forKey: FoldKey.glass) ?? "system"
-            let ownsItsTone = look.forcesLightIcons || look == .solid || (look == .glass && glass == "tinted")
+            let ownsItsTone = look.forcesLightIcons || look.forcesDarkIcons || look == .solid || (look == .glass && glass == "tinted")
             if Constants.bundleIdentifier == "com.samdeherdt.fold", !ownsItsTone {
                 sampleFoldBackdrop(on: screen)
             }
@@ -704,6 +704,7 @@ private struct IceBarContentView: View {
     private var foldUsesLightIcons: Bool {
         let look = FoldLook(rawValue: foldLook) ?? .glass
         if look.forcesLightIcons { return true }
+        if look.forcesDarkIcons { return false }
         let ownsItsTone = look == .solid || (look == .glass && foldGlass == "tinted")
         if !ownsItsTone, let bright = morph.backdropIsBright {
             return !bright
@@ -883,7 +884,9 @@ private struct IceBarContentView: View {
             setMorph(open: true)
             publishKeyItems()
             morph.showsNames = layout == .vertical && foldColumnNames
+            morph.motion = motion
         }
+        .onChange(of: motion) { _, motion in morph.motion = motion }
         .onChange(of: layout == .vertical && foldColumnNames) { _, shows in morph.showsNames = shows }
         .onChange(of: items.map(\.windowID)) { publishKeyItems() }
         .onChange(of: morph.isOpen) { _, isOpen in setMorph(open: isOpen) }
@@ -1109,6 +1112,25 @@ private struct IceBarItemView: View {
     @State private var isHovered = false
     @Environment(FoldMorph.self) private var foldMorph: FoldMorph?
 
+    /// Cascade: this icon has popped in.
+    @State private var cascadeIn = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var cascades: Bool {
+        foldMorph?.motion == .cascade && !reduceMotion
+    }
+
+    /// Pops this icon in after its neighbours nearer the menu-bar icon,
+    /// 30 ms apart.
+    private func startCascade() {
+        guard cascades, !cascadeIn, let items = foldMorph?.keyItems, !items.isEmpty else { return }
+        let index = items.firstIndex { $0.id == item.windowID } ?? 0
+        let rank = items.count - 1 - index
+        withAnimation(.spring(duration: 0.32, bounce: 0.35).delay(0.05 + Double(rank) * 0.03)) {
+            cascadeIn = true
+        }
+    }
+
     private var isKeySelected: Bool {
         foldMorph?.keyboardActive == true && foldMorph?.selectedWindowID == item.windowID
     }
@@ -1270,6 +1292,10 @@ private struct IceBarItemView: View {
                 }
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
                 .animation(.easeOut(duration: 0.12), value: isKeySelected)
+                .scaleEffect(cascades && !cascadeIn ? 0.6 : 1)
+                .opacity(cascades && !cascadeIn ? 0 : 1)
+                .onAppear { startCascade() }
+                .onChange(of: foldMorph?.keyItems.count) { startCascade() }
                 .onChange(of: foldMorph?.activateRequest) {
                     if isKeySelected { leftClickAction() }
                 }
