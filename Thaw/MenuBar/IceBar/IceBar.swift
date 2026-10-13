@@ -75,6 +75,35 @@ final class IceBarPanel: NSPanel {
         }
     }
 
+    /// Samples the screen under the bar (below this window) so translucent
+    /// looks can choose an icon colour that contrasts with it.
+    private func sampleFoldBackdrop(on screen: NSScreen) {
+        let windowID = CGWindowID(windowNumber)
+        let displayID = screen.displayID
+        Task { @MainActor [weak self] in
+            // Let the panel settle at its final frame first.
+            try? await Task.sleep(for: .milliseconds(60))
+            guard let self, isVisible, windowNumber > 0 else { return }
+            let menuBarHeight = screen.getMenuBarHeightEstimate()
+            let primaryHeight = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
+            // The bar's rect in top-left global coordinates, below the menu bar.
+            let top = max(primaryHeight - frame.maxY, primaryHeight - screen.frame.maxY + menuBarHeight)
+            let bottom = primaryHeight - frame.minY
+            let bounds = CGRect(x: frame.minX, y: top, width: frame.width, height: max(4, bottom - top))
+            guard
+                let image = try? await ScreenCapture.captureScreenBelowWindow(
+                    excludingWindowID: windowID, screenBounds: bounds, displayID: displayID
+                ),
+                let brightness = FoldBackdrop.brightness(of: image)
+            else { return }
+            let isBright = brightness > 0.55
+            Self.foldLog.notice("Fold backdrop brightness \(String(format: "%.2f", brightness)) → \(isBright ? "dark" : "light") icons")
+            if foldMorph.backdropIsBright != isBright {
+                foldMorph.backdropIsBright = isBright
+            }
+        }
+    }
+
     /// The liquid pour makes the panel reach up over the menu bar, covering the
     /// chevron. While the pointer is in that strip, let clicks fall through so
     /// the chevron still gets its left and right clicks.
@@ -327,6 +356,9 @@ final class IceBarPanel: NSPanel {
             // first watch tick, so a quick right-click never hits the drawer.
             updateFoldPassThrough()
         }
+        defer {
+            if Constants.bundleIdentifier == "com.samdeherdt.fold" { sampleFoldBackdrop(on: screen) }
+        }
         appState.navigationState.isIceBarPresented = true
         currentSection = section
         lastShowTimestamp = Date()
@@ -507,6 +539,7 @@ private struct IceBarContentView: View {
     @AppStorage(FoldKey.appearance) private var foldAppearance = "dark"
     @AppStorage(FoldKey.maxWidth) private var foldMaxWidth = 0.0
     @AppStorage(FoldKey.look) private var foldLook = FoldLook.glass.rawValue
+    @AppStorage(FoldKey.glass) private var foldGlass = "system"
     @AppStorage(FoldKey.motion) private var foldMotion = FoldMotion.liquid.rawValue
     @AppStorage(FoldKey.iconSpacing) private var foldIconSpacing = 0.0
     @AppStorage(FoldKey.iconScale) private var foldIconScale = 1.0
@@ -579,9 +612,17 @@ private struct IceBarContentView: View {
         return itemBounds.midX - panelX
     }
 
-    /// White icons on dark appearances and on the coloured looks.
+    /// White icons where the bar is dark. Opaque and tinted looks set their
+    /// own darkness; translucent ones (glass, frosted, outline, minimal) take
+    /// on whatever is behind them, so their icons follow the sampled backdrop.
     private var foldUsesLightIcons: Bool {
-        foldColorScheme == .dark || (FoldLook(rawValue: foldLook) ?? .glass).forcesLightIcons
+        let look = FoldLook(rawValue: foldLook) ?? .glass
+        if look.forcesLightIcons { return true }
+        let ownsItsTone = look == .solid || (look == .glass && foldGlass == "tinted")
+        if !ownsItsTone, let bright = morph.backdropIsBright {
+            return !bright
+        }
+        return foldColorScheme == .dark
     }
 
     private var motion: FoldMotion {

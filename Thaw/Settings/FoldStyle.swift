@@ -227,6 +227,29 @@ enum FoldPointer {
 @Observable
 final class FoldMorph {
     var isOpen = false
+    /// Whether the screen behind the bar is bright, sampled each time the
+    /// drawer opens. Translucent looks pick their icon colour from it, since
+    /// Liquid Glass takes on whatever is behind it. Nil until first sampled.
+    var backdropIsBright: Bool?
+}
+
+enum FoldBackdrop {
+    /// Average perceived brightness (0–1) of an image, from an 8×8 downsample.
+    static func brightness(of image: CGImage) -> Double? {
+        let side = 8
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        guard let context = CGContext(
+            data: &pixels, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        var total = 0.0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            total += 0.2126 * Double(pixels[i]) + 0.7152 * Double(pixels[i + 1]) + 0.0722 * Double(pixels[i + 2])
+        }
+        return total / Double(side * side) / 255
+    }
 }
 
 /// The aurora gradient, shared by the surface and the goo paint.
@@ -259,7 +282,8 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
             if glass == "clear" {
                 content.glassEffect(.clear, in: shape)
             } else if glass == "tinted" {
-                content.glassEffect(.regular.tint((isDark ? Color.black : Color.white).opacity(0.35)), in: shape)
+                // Strong enough to hold the chosen appearance over any backdrop.
+                content.glassEffect(.regular.tint((isDark ? Color.black : Color.white).opacity(0.62)), in: shape)
             } else {
                 content.glassEffect(.regular, in: shape)
             }
