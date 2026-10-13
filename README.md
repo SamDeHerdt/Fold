@@ -19,6 +19,8 @@ After that Fold updates itself: it checks this repo once a day, and you can also
 - **Right-click the icon:** Open Fold, Search Icons…, Motion ▸, Look ▸, Open on Hover, Arrange Icons…, Check for Updates…, Settings… (⌘,), Quit.
 - **Arrange:** choose which icons live in the drawer (Settings → Arrange icons…), or ⌘-drag icons in the menu bar.
 - **Search:** find and open any menu-bar icon by name, hidden or not.
+- **Keyboard:** open Fold with your shortcut, then arrows move, Return opens, Esc closes, and typing jumps to an app.
+- **macOS 27** is not supported yet; that needs a port to Thaw's 3.0 engine.
 
 ### Settings
 
@@ -26,10 +28,10 @@ A live preview sits on top and replays every change.
 
 | Tab | What's there |
 |---|---|
-| Look | Glass (System / Clear / Tinted), Frosted, Solid, Outline, Minimal, Accent, Neon, Aurora · Light / Dark / System · **Layout:** length, icon size, icon spacing, position |
-| Motion | Liquid (gooey pour), Bubbles, Pop, Iris, Elastic, Unfold, Drop, Fade, None — all start at the menu-bar icon; Reduce Motion makes them instant |
+| Look | Glass (System / Clear / Tinted), Frosted, Solid, Outline, Minimal, Accent, Paper, Obsidian · Light / Dark / System · **Layout:** Row / Grid / Column, length or rows shown, icon size, icon spacing, position |
+| Motion | Liquid (gooey pour), Bubbles, Pop, Fold, Cascade, Materialize, Glide, Fade, None — all start at the menu-bar icon; Reduce Motion makes them instant |
 | Icon | 14 menu-bar icons |
-| Behaviour | Open on hover and delay · when to close · open at login · updates |
+| Behaviour | Open on hover and delay · when to close · open at login · attention dot · updates |
 | Shortcuts | Keys to open Fold and to search icons |
 
 ## Build

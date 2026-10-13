@@ -486,12 +486,6 @@ private struct FoldChoiceGrid<Option: Identifiable, Visual: View>: View {
 private struct FoldLookSwatch: View {
     let look: FoldLook
 
-    private static let aurora: [Color] = [
-        Color(red: 0.36, green: 0.29, blue: 0.86),
-        Color(red: 0.76, green: 0.28, blue: 0.62),
-        Color(red: 0.16, green: 0.62, blue: 0.72),
-    ]
-
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -526,17 +520,10 @@ private struct FoldLookSwatch: View {
             Color.clear
         case .accent:
             Capsule().fill(Color.accentColor)
-        case .neon:
-            Capsule().fill(Color(white: 0.06))
-                .overlay(Capsule().strokeBorder(Color.accentColor, lineWidth: 1.2).shadow(color: .accentColor, radius: 3))
-        case .aurora:
-            Capsule().fill(LinearGradient(colors: Self.aurora, startPoint: .leading, endPoint: .trailing))
-        case .glow:
-            Capsule().fill(Color(white: 0.06)).overlay(FoldGlowBorder(shape: Capsule()))
-        case .mesh:
-            Capsule().fill(foldMeshGradient())
         case .paper:
             Capsule().fill(foldPaperColor)
+        case .obsidian:
+            Capsule().fill(foldObsidianColor).overlay(Capsule().strokeBorder(foldTopHighlight(0.3), lineWidth: 1))
         }
     }
 }
