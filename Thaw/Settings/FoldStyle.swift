@@ -282,8 +282,12 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
             if glass == "clear" {
                 content.glassEffect(.clear, in: shape)
             } else if glass == "tinted" {
-                // Strong enough to hold the chosen appearance over any backdrop.
-                content.glassEffect(.regular.tint((isDark ? Color.black : Color.white).opacity(0.62)), in: shape)
+                // Glass tint alone barely shifts the tone over a white (or black)
+                // backdrop, so a real layer sits on the glass to hold the chosen
+                // appearance: dark stays dark, light stays light, anywhere.
+                content
+                    .background((isDark ? Color(white: 0.08) : Color.white).opacity(0.72), in: shape)
+                    .glassEffect(.regular, in: shape)
             } else {
                 content.glassEffect(.regular, in: shape)
             }
@@ -458,8 +462,9 @@ struct FoldMorphReveal: ViewModifier, Animatable {
 
     private var contentOpacity: Double {
         switch motion {
-        case .liquid: Double(Self.unit((progress - 0.6) / 0.3))
-        case .bubbles: Double(Self.unit((progress - 0.55) / 0.3))
+        // Pouring motions: icons wait until the bar has fused under them.
+        case .liquid: Double(Self.unit((progress - 0.78) / 0.18))
+        case .bubbles: Double(Self.unit((progress - 0.78) / 0.18))
         case .unfold: Double(Self.unit((progress - 0.25) / 0.6))
         case .pop: Double(Self.unit(progress / 0.4))
         case .iris: Double(Self.unit((progress - 0.1) / 0.5))
