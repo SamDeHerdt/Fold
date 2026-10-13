@@ -37,6 +37,7 @@ struct FoldSettingsContent: View {
     @Bindable var general: GeneralSettings
     @AppStorage(FoldKey.appearance) private var appearance = "dark"
     @AppStorage(FoldKey.glass) private var glass = "system"
+    @AppStorage(FoldKey.tint) private var tint = ""
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
     @AppStorage(FoldKey.maxWidth) private var maxWidth = 0.0
     @AppStorage(FoldKey.motion) private var motion = FoldMotion.liquid.rawValue
@@ -65,7 +66,7 @@ struct FoldSettingsContent: View {
 
     /// Anything that changes how the drawer looks or moves replays the preview.
     private var previewSignature: String {
-        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(arrangementBinding.wrappedValue.rawValue)|\(gridColumnsBinding.wrappedValue)|\(maxRows)|\(columnNames)|\(positionBinding.wrappedValue.rawValue)|\(attentionDot)|\((motionSpeed * 10).rounded())|\(general.iceIcon.name.rawValue)"
+        "\(motion)|\(look)|\(glass)|\(tint)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(arrangementBinding.wrappedValue.rawValue)|\(gridColumnsBinding.wrappedValue)|\(maxRows)|\(columnNames)|\(positionBinding.wrappedValue.rawValue)|\(attentionDot)|\((motionSpeed * 10).rounded())|\(general.iceIcon.name.rawValue)"
     }
 
     var body: some View {
@@ -161,6 +162,44 @@ struct FoldSettingsContent: View {
         }
     }
 
+    /// Colour for the Accent look and coloured glass: presets, any colour
+    /// from the system picker, or the system accent.
+    private var tintRow: some View {
+        LabeledContent("Colour") {
+            HStack(spacing: 7) {
+                Button {
+                    tint = ""
+                } label: {
+                    Text("Auto")
+                        .font(.caption)
+                        .padding(.horizontal, 7)
+                        .frame(height: 20)
+                        .background(Color.accentColor.opacity(tint.isEmpty ? 0.9 : 0.25), in: Capsule())
+                        .foregroundStyle(tint.isEmpty ? Color.white : Color.primary)
+                }
+                .buttonStyle(.plain)
+                .help("Follow the system accent colour")
+                ForEach(FoldTint.presets, id: \.self) { hex in
+                    Button {
+                        tint = hex
+                    } label: {
+                        Circle()
+                            .fill(FoldTint.color(hex))
+                            .frame(width: 18, height: 18)
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(tint == hex ? 0.9 : 0.15), lineWidth: tint == hex ? 2 : 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(hex)
+                }
+                ColorPicker("Custom colour", selection: Binding(
+                    get: { FoldTint.color(tint) },
+                    set: { tint = FoldTint.hex($0) }
+                ), supportsOpacity: false)
+                    .labelsHidden()
+            }
+        }
+    }
+
     // MARK: Tabs
 
     @ViewBuilder
@@ -180,7 +219,11 @@ struct FoldSettingsContent: View {
                     Text("System").tag("system")
                     Text("Clear").tag("clear")
                     Text("Tinted").tag("tinted")
+                    Text("Colour").tag("color")
                 }.pickerStyle(.segmented)
+            }
+            if look == FoldLook.accent.rawValue || (look == FoldLook.glass.rawValue && glass == "color") {
+                tintRow
             }
             Picker("Appearance", selection: $appearance) {
                 Text("System").tag("system")
@@ -546,7 +589,7 @@ private struct FoldLookSwatch: View {
         case .minimal:
             Color.clear
         case .accent:
-            Capsule().fill(Color.accentColor)
+            Capsule().fill(FoldTint.color(UserDefaults.standard.string(forKey: FoldKey.tint) ?? ""))
         case .paper:
             Capsule().fill(foldPaperColor)
         case .obsidian:

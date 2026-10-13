@@ -45,6 +45,8 @@ final class IceBarPanel: NSPanel {
     private static let foldLog = DiagLog(category: "FoldHover")
     private weak var shownScreen: NSScreen?
     private let foldMorph = FoldMorph()
+    /// Set just before closing because an icon was clicked.
+    var foldQuickClose = false
     private var foldCloseGeneration = 0
     private var foldHoverTask: Task<Void, Never>?
     private var foldPointerOutsideSince: Date?
@@ -540,7 +542,10 @@ final class IceBarPanel: NSPanel {
         foldCloseGeneration += 1
         foldHoverTask?.cancel()
         foldHoverTask = nil
-        let closeDelay = FoldMotion.current.closeDelay
+        // After a click on an icon the drawer gets out of the way at once;
+        // the icon's flight carries the eye instead of the close animation.
+        let closeDelay = foldQuickClose ? min(FoldMotion.current.closeDelay, 0.07) : FoldMotion.current.closeDelay
+        foldQuickClose = false
         guard
             Constants.bundleIdentifier == "com.samdeherdt.fold",
             foldMorph.isOpen,
@@ -1206,17 +1211,16 @@ private struct IceBarItemView: View {
                     chevronWindow: menuBarManager.controlItem(withName: .visible)?.window,
                     on: screen
                 )
+                panel.foldQuickClose = true
             }
             menuBarManager.section(withName: section)?.hide()
             Task {
                 // Wait until the IceBar panel is fully closed before checking
                 // item visibility. Uses KVO on isVisible so we resume as soon
                 // as the panel hides rather than busy-polling.
-                // Fold doesn't wait: its drawer closes while the icon is on
-                // its way up, which saves a quarter of a second per click.
-                if foldMorph == nil {
-                    await panel.waitUntilClosed(timeout: .milliseconds(200))
-                }
+                // (Fold must wait too: a drawer that closes after the app's
+                // menu has opened takes that menu down with it.)
+                await panel.waitUntilClosed(timeout: .milliseconds(foldMorph == nil ? 200 : 400))
                 if let liveItem = await liveOnScreenItem(matching: item, on: displayID) {
                     do {
                         try await itemManager.click(item: liveItem, with: .left)

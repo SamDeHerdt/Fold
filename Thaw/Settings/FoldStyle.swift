@@ -31,6 +31,10 @@ enum FoldKey {
     /// Show a dot on the menu-bar icon when a hidden icon changes.
     static let attentionDot = "FoldAttentionDotV1"
 
+    /// The colour of the Accent look and of coloured glass, as "#RRGGBB";
+    /// empty follows the system accent colour.
+    static let tint = "FoldTintColorV1"
+
     static var attentionDotEnabled: Bool {
         UserDefaults.standard.object(forKey: attentionDot) as? Bool ?? true
     }
@@ -221,14 +225,16 @@ enum FoldLook: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Coloured looks always carry white icons, whatever the appearance.
+    /// Coloured looks carry white icons whatever the appearance, unless the
+    /// chosen colour is a light one.
     var forcesLightIcons: Bool {
-        self == .accent || self == .obsidian
+        self == .obsidian || (self == .accent && !FoldTint.isBright)
     }
 
-    /// Paper is a light card whatever the appearance, so its icons are dark.
+    /// Paper is a light card whatever the appearance, so its icons are dark;
+    /// so is an Accent look in a light colour.
     var forcesDarkIcons: Bool {
-        self == .paper
+        self == .paper || (self == .accent && FoldTint.isBright)
     }
 
     static var current: FoldLook {
@@ -421,11 +427,49 @@ func foldTopHighlight(_ strength: Double) -> LinearGradient {
     LinearGradient(colors: [Color.white.opacity(strength), Color.white.opacity(strength * 0.08)], startPoint: .top, endPoint: .bottom)
 }
 
+/// The colour chosen for the Accent look and coloured glass.
+enum FoldTint {
+    static let presets = ["#0A84FF", "#30D5C8", "#34C759", "#FFD60A", "#FF9F0A", "#FF375F", "#BF5AF2", "#8E8E93"]
+
+    static func color(_ hex: String) -> Color {
+        nsColor(hex).map(Color.init(nsColor:)) ?? .accentColor
+    }
+
+    static func nsColor(_ hex: String) -> NSColor? {
+        let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "# "))
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+        return NSColor(
+            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    static func hex(_ color: Color) -> String {
+        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return "" }
+        return String(
+            format: "#%02X%02X%02X",
+            Int((rgb.redComponent * 255).rounded()),
+            Int((rgb.greenComponent * 255).rounded()),
+            Int((rgb.blueComponent * 255).rounded())
+        )
+    }
+
+    /// Whether the stored colour is light enough to need dark icons on it.
+    static var isBright: Bool {
+        let stored = UserDefaults.standard.string(forKey: FoldKey.tint) ?? ""
+        guard let rgb = (nsColor(stored) ?? NSColor.controlAccentColor).usingColorSpace(.sRGB) else { return false }
+        return 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent > 0.62
+    }
+}
+
 /// Draws the selected Fold look behind content, in the given shape.
 struct FoldSurface<S: InsettableShape>: ViewModifier {
     let shape: S
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
     @AppStorage(FoldKey.glass) private var glass = "system"
+    @AppStorage(FoldKey.tint) private var tint = ""
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -437,6 +481,10 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
         case .glass where !reduceTransparency:
             if glass == "clear" {
                 content.glassEffect(.clear, in: shape)
+            } else if glass == "color" {
+                // Liquid Glass with a wash of the chosen colour: still
+                // see-through, still refracting what is behind it.
+                content.glassEffect(.regular.tint(FoldTint.color(tint).opacity(0.38)), in: shape)
             } else if glass == "tinted" {
                 // Glass tint alone barely shifts the tone over a white (or black)
                 // backdrop, so a real layer sits on the glass to hold the chosen
@@ -452,9 +500,9 @@ struct FoldSurface<S: InsettableShape>: ViewModifier {
                 .background(.thinMaterial, in: shape)
                 .overlay(shape.strokeBorder(Color.white.opacity(isDark ? 0.14 : 0.6), lineWidth: 0.5))
         case .accent where !reduceTransparency:
-            content.glassEffect(.regular.tint(Color.accentColor.opacity(0.6)), in: shape)
+            content.glassEffect(.regular.tint(FoldTint.color(tint).opacity(0.7)), in: shape)
         case .accent:
-            content.background(Color.accentColor, in: shape)
+            content.background(FoldTint.color(tint), in: shape)
         case .paper:
             // The shadow belongs to the card, not to the icons on it.
             content
@@ -902,6 +950,7 @@ struct FoldMorphReveal: ViewModifier, Animatable {
 private struct FoldGooFill: View {
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
     @AppStorage(FoldKey.glass) private var glass = "system"
+    @AppStorage(FoldKey.tint) private var tint = ""
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -911,11 +960,13 @@ private struct FoldGooFill: View {
             Color.clear
         case .solid, .outline:
             Rectangle().fill(isDark ? Color(white: 0.14) : Color(white: 0.95))
+        case .glass where glass == "color":
+            Rectangle().fill(FoldTint.color(tint).opacity(0.55))
         case .glass, .frosted:
             let opacity = glass == "clear" ? 0.55 : 0.82
             Rectangle().fill((isDark ? Color(white: 0.16) : Color(white: 0.96)).opacity(opacity))
         case .accent:
-            Rectangle().fill(Color.accentColor.opacity(0.85))
+            Rectangle().fill(FoldTint.color(tint).opacity(0.85))
         case .paper:
             Rectangle().fill(foldPaperColor)
         case .obsidian:

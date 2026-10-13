@@ -131,6 +131,54 @@ enum FoldFlight {
     private static var linkTask: Task<Void, Never>?
     private static var linkFrames: (item: CGRect, popup: CGRect)?
 
+    /// Where the visible panel sits inside a window's bounds. Window bounds
+    /// include the shadow's margin, which differs per app, so the outline is
+    /// fitted to the opaque pixels instead.
+    private struct Fit: Equatable {
+        var left: CGFloat, top: CGFloat, right: CGFloat, bottom: CGFloat
+        var radius: CGFloat
+    }
+
+    private static func fit(windowID: CGWindowID, bounds: CGRect) -> Fit? {
+        let w = Int(bounds.width), h = Int(bounds.height)
+        guard w > 40, h > 20, w < 4000, h < 4000,
+              let image = ScreenCapture.captureWindow(with: windowID, option: [.nominalResolution]),
+              let context = CGContext(
+                  data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              )
+        else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = context.data else { return nil }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        // Solid enough to be the panel, not its shadow.
+        func solid(_ x: Int, _ y: Int) -> Bool { pixels[(y * w + x) * 4 + 3] > 120 }
+        var counts = [Int](repeating: 0, count: h)
+        for y in 0 ..< h {
+            var n = 0
+            for x in 0 ..< w where solid(x, y) { n += 1 }
+            counts[y] = n
+        }
+        guard let widest = counts.max(), widest > 40 else { return nil }
+        // Rows belonging to the body (the arrow of a popover is narrower).
+        guard let top = counts.firstIndex(where: { $0 * 10 >= widest * 6 }),
+              let bottom = counts.lastIndex(where: { $0 * 10 >= widest * 6 }),
+              bottom - top > 20
+        else { return nil }
+        let middle = (top + bottom) / 2
+        guard let left = (0 ..< w).first(where: { solid($0, middle) }),
+              let right = (0 ..< w).last(where: { solid($0, middle) })
+        else { return nil }
+        let full = counts[top ... bottom].firstIndex(where: { $0 * 100 >= widest * 97 }) ?? top
+        let radius = min(max(CGFloat(full - top), 6), 28)
+        return Fit(
+            left: CGFloat(left), top: CGFloat(top),
+            right: CGFloat(w - 1 - right), bottom: CGFloat(h - 1 - bottom),
+            radius: radius
+        )
+    }
+
     /// Draws one outline around the menu-bar icon and the window it opened,
     /// for as long as that window stays open.
     static func link(itemWindowID: CGWindowID, popupWindowID: CGWindowID) {
@@ -138,6 +186,9 @@ enum FoldFlight {
         unlink(animated: false)
         linkTask = Task { @MainActor in
             var first = true
+            var fitted: Fit?
+            // Let the window finish fading in before measuring it.
+            try? await Task.sleep(for: .milliseconds(220))
             while !Task.isCancelled {
                 guard Bridging.getWindowList(option: .onScreen).contains(popupWindowID),
                       let item = Bridging.getWindowBounds(for: itemWindowID),
@@ -146,8 +197,19 @@ enum FoldFlight {
                 else { break }
                 if linkFrames?.item != item || linkFrames?.popup != popup {
                     linkFrames = (item, popup)
-                    drawLink(item: item, popup: popup, animated: first)
-                    first = false
+                    fitted = fit(windowID: popupWindowID, bounds: popup)
+                    if let fitted {
+                        let body = CGRect(
+                            x: popup.minX + fitted.left, y: popup.minY + fitted.top,
+                            width: popup.width - fitted.left - fitted.right,
+                            height: popup.height - fitted.top - fitted.bottom
+                        )
+                        drawLink(item: item, popup: body, radius: fitted.radius, animated: first)
+                        first = false
+                    } else {
+                        // No outline is better than one that doesn't fit.
+                        linkWindow?.orderOut(nil)
+                    }
                 }
                 try? await Task.sleep(for: .milliseconds(90))
             }
@@ -172,13 +234,13 @@ enum FoldFlight {
     }
 
     /// `item` and `popup` are in Quartz coordinates (origin top-left).
-    private static func drawLink(item: CGRect, popup: CGRect, animated: Bool) {
+    private static func drawLink(item: CGRect, popup: CGRect, radius: CGFloat, animated: Bool) {
         guard let primary = NSScreen.screens.first else { return }
         func flip(_ r: CGRect) -> CGRect {
             CGRect(x: r.minX, y: primary.frame.height - r.maxY, width: r.width, height: r.height)
         }
         let pill = flip(item).insetBy(dx: -1, dy: 2.5)
-        let body = flip(popup).insetBy(dx: -1, dy: -1)
+        let body = flip(popup).insetBy(dx: -2.5, dy: -2.5)
         // Only when the window really hangs under the icon.
         guard body.maxY <= pill.maxY, pill.minY - body.maxY < 40,
               body.minX - 8 <= pill.midX, pill.midX <= body.maxX + 8
@@ -207,7 +269,7 @@ enum FoldFlight {
         let o = frame.origin
         let pillLocal = pill.offsetBy(dx: -o.x, dy: -o.y)
         let bodyLocal = body.offsetBy(dx: -o.x, dy: -o.y)
-        let bodyRadius: CGFloat = min(body.width < 300 ? 13 : 20, bodyLocal.height / 2)
+        let bodyRadius: CGFloat = min(radius + 2.5, bodyLocal.height / 2)
         // The neck runs from the middle of the pill down into the window.
         let neck = CGRect(
             x: pillLocal.minX, y: bodyLocal.maxY - bodyRadius,

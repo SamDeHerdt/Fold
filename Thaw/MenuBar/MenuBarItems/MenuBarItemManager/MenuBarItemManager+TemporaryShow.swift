@@ -842,6 +842,13 @@ extension MenuBarItemManager {
                     let candidates = WindowInfo.createWindows(option: .onScreen)
                         .filter { !idsBeforeClick.contains($0.windowID) }
                     if let found = MenuBarItemManager.interfaceWindowToTrack(among: candidates, interfacePIDs: interfacePIDs) {
+                        // Only a window that stays is the app's menu; one
+                        // that flickers past would send the icon home early.
+                        try? await Task.sleep(for: .milliseconds(350))
+                        guard WindowInfo(windowID: found.windowID)?.isOnScreen == true,
+                              temporarilyShownItemContexts.contains(where: { $0 === context }),
+                              context.shownInterfaceWindow == nil
+                        else { continue }
                         context.shownInterfaceWindow = found
                         FoldFlight.link(itemWindowID: itemWindowID, popupWindowID: found.windowID)
                         return
