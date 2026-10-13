@@ -114,12 +114,25 @@ final class IceBarPanel: NSPanel {
     /// The liquid pour makes the panel reach up over the menu bar, covering the
     /// chevron. While the pointer is in that strip, let clicks fall through so
     /// the chevron still gets its left and right clicks.
+    /// The bar itself in screen coordinates: the window minus its shadow
+    /// margins and the strip over the menu bar.
+    private func foldBarRect(on screen: NSScreen) -> NSRect {
+        let menuBarBottom = screen.frame.maxY - screen.getMenuBarHeightEstimate()
+        let top = min(frame.maxY, menuBarBottom)
+        let bottom = frame.minY + FoldWidth.bottomMargin
+        return NSRect(
+            x: frame.minX + FoldWidth.sideMargin, y: bottom,
+            width: frame.width - FoldWidth.sideMargin * 2, height: max(0, top - bottom)
+        )
+    }
+
     private func updateFoldPassThrough() {
         guard let screen = shownScreen ?? screen else { return }
-        let menuBarBottom = screen.frame.maxY - screen.getMenuBarHeightEstimate()
-        let overStrip = FoldPointer.location.y >= menuBarBottom
-        if ignoresMouseEvents != overStrip, foldMorph.isOpen {
-            ignoresMouseEvents = overStrip
+        // Only the bar takes clicks. The strip over the menu bar and the
+        // shadow margins let them fall through to whatever is underneath.
+        let offBar = !foldBarRect(on: screen).insetBy(dx: -2, dy: -2).contains(FoldPointer.location)
+        if ignoresMouseEvents != offBar, foldMorph.isOpen {
+            ignoresMouseEvents = offBar
         }
     }
 
@@ -127,7 +140,8 @@ final class IceBarPanel: NSPanel {
         guard isVisible, foldMorph.isOpen, let screen = shownScreen ?? screen else { return }
         // Still hovering while over the drawer, the chevron, or the strip of
         // menu bar straight above the drawer that connects the two.
-        let drawerColumn = NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: screen.frame.maxY - frame.minY)
+        let bar = foldBarRect(on: screen)
+        let drawerColumn = NSRect(x: bar.minX, y: bar.minY, width: bar.width, height: screen.frame.maxY - bar.minY)
         let chevron = foldChevronFrame(on: screen) ?? .zero
         let pointer = FoldPointer.location
         if drawerColumn.insetBy(dx: -8, dy: -8).contains(pointer) || chevron.insetBy(dx: -4, dy: -4).contains(pointer) {
@@ -245,7 +259,10 @@ final class IceBarPanel: NSPanel {
         // Liquid Glass: transparent window with shadow
         self.backgroundColor = .clear
         self.isOpaque = false
-        self.hasShadow = true
+        // Fold draws its own shadow under the bar: the window server's shadow
+        // is traced from a cached snapshot of the window's shape, which goes
+        // stale and ragged as the drawer animates.
+        self.hasShadow = Constants.bundleIdentifier != "com.samdeherdt.fold"
         self.level = .mainMenu + 1
         self.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle, .moveToActiveSpace, .stationary]
         self.hidesOnDeactivate = false
@@ -685,7 +702,8 @@ private struct IceBarContentView: View {
     /// scrolls once the icons outgrow the screen; a fixed cap here clipped the
     /// leading items, which a vertical mouse wheel cannot scroll back into view.
     private var compactWidth: CGFloat {
-        min(maxDrawerWidth, naturalWidth)
+        // The Length setting measures the bar; the window adds its margins.
+        min(maxDrawerWidth + FoldWidth.sideMargin * 2, naturalWidth)
     }
 
     private var maxDrawerWidth: CGFloat {
@@ -754,7 +772,7 @@ private struct IceBarContentView: View {
             return total + image.size.width * height / image.size.height
         }
         let spacing = CGFloat(max(0, items.count - 1)) * itemSpacing
-        let width = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + 16
+        let width = items.isEmpty ? 220 : iconsWidth + spacing + horizontalPadding * 2 + FoldWidth.sideMargin * 2
         return max(44, width)
     }
 
@@ -856,9 +874,10 @@ private struct IceBarContentView: View {
                     .foregroundStyle(Color(cgColor: configuration.current.borderColor))
             }
         }
-        // Room for Pop/Elastic to overshoot without the window clipping them.
-        .padding(.horizontal, 8)
-        .padding(.bottom, 10)
+        // Room for the bar's shadow to fade out, and for Pop/Elastic to
+        // overshoot, without the window's edge cutting them off.
+        .padding(.horizontal, FoldWidth.sideMargin)
+        .padding(.bottom, FoldWidth.bottomMargin)
         .padding(.top, 2 + pourInset)
         .frame(width: layout == .horizontal ? compactWidth : nil)
         .frame(maxWidth: screen.frame.width)

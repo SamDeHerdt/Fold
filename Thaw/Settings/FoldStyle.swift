@@ -245,6 +245,11 @@ enum FoldLook: String, CaseIterable, Identifiable {
 }
 
 enum FoldWidth {
+    /// Clear space the drawer window keeps around the bar so its shadow (and
+    /// Pop/Elastic overshoot) isn't cut off by the window's edge.
+    static let sideMargin: CGFloat = 14
+    static let bottomMargin: CGFloat = 16
+
     static let minimum: CGFloat = 120
     static let screenMargin: CGFloat = 48
 
@@ -746,6 +751,11 @@ struct FoldMorphReveal: ViewModifier, Animatable {
             Color.clear
                 .frame(width: bar.width, height: bar.height)
                 .modifier(FoldSurface(shape: FoldBarShape(radius: cornerRadius)))
+                // The bar's own soft shadow (the window has none); Minimal
+                // has no surface to cast one.
+                .compositingGroup()
+                // Tight and low, like macOS's own menus.
+                .shadow(color: .black.opacity(FoldLook.current == .minimal ? 0 : 0.2), radius: 4, y: 1.5)
                 .position(x: bar.midX, y: bar.midY)
                 .opacity(capsuleOpacity)
             if gooAmount > 0 {
