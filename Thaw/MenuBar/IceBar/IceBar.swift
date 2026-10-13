@@ -1472,6 +1472,12 @@ private struct IceBarItemClickView: NSViewRepresentable {
             onHover(false)
         }
 
+        /// A hover-opened drawer is not the key window. Without this the
+        /// first click only focuses the drawer and the icon needs a second.
+        override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+            true
+        }
+
         override func mouseDown(with event: NSEvent) {
             super.mouseDown(with: event)
             tooltipController.cancel()
