@@ -45,6 +45,7 @@ struct FoldSettingsContent: View {
     @AppStorage(FoldKey.iconScale) private var iconScale = 1.0
     @AppStorage(FoldKey.attentionDot) private var attentionDot = true
     @AppStorage(FoldKey.maxRows) private var maxRows = 8
+    @AppStorage(FoldKey.motionSpeed) private var motionSpeed = 1.0
     @AppStorage(FoldKey.columnNames) private var columnNames = false
     @AppStorage("FoldSettingsTabV1") private var tab = FoldSettingsTab.look
     @State private var isArranging = false
@@ -64,7 +65,7 @@ struct FoldSettingsContent: View {
 
     /// Anything that changes how the drawer looks or moves replays the preview.
     private var previewSignature: String {
-        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(arrangementBinding.wrappedValue.rawValue)|\(gridColumnsBinding.wrappedValue)|\(maxRows)|\(columnNames)|\(positionBinding.wrappedValue.rawValue)|\(attentionDot)|\(general.iceIcon.name.rawValue)"
+        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(arrangementBinding.wrappedValue.rawValue)|\(gridColumnsBinding.wrappedValue)|\(maxRows)|\(columnNames)|\(positionBinding.wrappedValue.rawValue)|\(attentionDot)|\((motionSpeed * 10).rounded())|\(general.iceIcon.name.rawValue)"
     }
 
     var body: some View {
@@ -267,15 +268,29 @@ struct FoldSettingsContent: View {
             Text((FoldMotion(rawValue: motion) ?? .liquid).caption)
                 .foregroundStyle(.secondary)
         }
+        Section {
+            Slider(value: $motionSpeed, in: 0.4 ... 2) {
+                Text("Speed")
+            } minimumValueLabel: {
+                Image(systemName: "tortoise")
+            } maximumValueLabel: {
+                Image(systemName: "hare")
+            }
+            .disabled(motion == FoldMotion.none.rawValue)
+        } footer: {
+            Text("Drag to change how quickly Fold opens; the preview replays as you go.")
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
     private var iconTab: some View {
-        Section("Menu bar icon") {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
+        Section {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(icons, id: \.name) { set in
                     FoldIconChoice(
-                        image: set.hidden.nsImage(for: appState),
+                        closed: set.hidden.nsImage(for: appState),
+                        open: set.visible.nsImage(for: appState),
                         title: set.name.rawValue,
                         isSelected: general.iceIcon.name == set.name
                     ) {
@@ -284,6 +299,19 @@ struct FoldSettingsContent: View {
                 }
             }
             .padding(.vertical, 2)
+        } header: {
+            Text("Menu bar icon")
+        } footer: {
+            Text("Each card shows the icon closed, then open.")
+                .foregroundStyle(.secondary)
+        }
+        Section {
+            Toggle("Show a dot when a hidden icon changes", isOn: $attentionDot)
+        } header: {
+            Text("Badge")
+        } footer: {
+            Text("The dot clears when you open Fold. Icons that change all the time, like meters, are ignored.")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -313,7 +341,6 @@ struct FoldSettingsContent: View {
                 Text("Only when I close it").tag(FoldClose.never)
             }
             LaunchAtLogin.Toggle { Text("Open at login") }
-            Toggle("Dot on the icon when a hidden icon changes", isOn: $attentionDot)
         } header: {
             Text("Close")
         } footer: {
@@ -528,34 +555,55 @@ private struct FoldLookSwatch: View {
     }
 }
 
+/// A menu-bar icon set, shown as its closed and open states.
 private struct FoldIconChoice: View {
-    let image: NSImage?
+    let closed: NSImage?
+    let open: NSImage?
     let title: String
     let isSelected: Bool
     let action: () -> Void
 
+    private func glyph(_ image: NSImage?, active: Bool) -> some View {
+        Group {
+            if let image {
+                Image(nsImage: image).renderingMode(.template)
+            } else {
+                Image(systemName: "questionmark")
+            }
+        }
+        .frame(width: 30, height: 22)
+        // The open state carries the menu bar's highlight, as it does live.
+        .background(Capsule().fill(Color.primary.opacity(active ? 0.16 : 0)))
+    }
+
     var body: some View {
         Button(action: action) {
-            Group {
-                if let image {
-                    Image(nsImage: image).renderingMode(.template)
-                } else {
-                    Image(systemName: "questionmark")
+            VStack(spacing: 5) {
+                HStack(spacing: 6) {
+                    glyph(closed, active: false)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                    glyph(open, active: true)
                 }
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .frame(width: 44, height: 32)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.05))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 1.5)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(title)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -810,7 +858,7 @@ private struct FoldPreview: View {
     /// Cascade in the preview: how far the icon at `rank` has popped in.
     private func cascade(rank: Int) -> CGFloat {
         guard motion == .cascade else { return 1 }
-        return min(1, max(0, (progress - 0.1 - CGFloat(rank) * 0.07) / 0.3))
+        return min(1, max(0, (progress - 0.08 - CGFloat(rank) * 0.09) / 0.3))
     }
 
     private func icon(_ image: NSImage, cell: Bool, rank: Int = 0) -> some View {
@@ -820,7 +868,7 @@ private struct FoldPreview: View {
             .resizable()
             .frame(width: width(of: image), height: iconHeight)
             .frame(width: cell ? cellWidth : nil, height: cell ? barHeight : nil)
-            .scaleEffect(0.6 + 0.4 * pop)
+            .scaleEffect(0.3 + 0.7 * pop)
             .opacity(Double(pop))
     }
 

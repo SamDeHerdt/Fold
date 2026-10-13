@@ -900,7 +900,12 @@ private struct IceBarContentView: View {
         .onFrameChange(update: $frame)
         .environment(morph)
         .onAppear {
-            setMorph(open: true)
+            // The content exists a moment before its window is on screen;
+            // start the motion once it is, so the first frames aren't lost.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(70))
+                if morph.isOpen { setMorph(open: true) }
+            }
             publishKeyItems()
             morph.showsNames = layout == .vertical && foldColumnNames
             morph.motion = motion
@@ -1145,7 +1150,8 @@ private struct IceBarItemView: View {
         guard cascades, !cascadeIn, let items = foldMorph?.keyItems, !items.isEmpty else { return }
         let index = items.firstIndex { $0.id == item.windowID } ?? 0
         let rank = items.count - 1 - index
-        withAnimation(.spring(duration: 0.32, bounce: 0.35).delay(0.05 + Double(rank) * 0.03)) {
+        let speed = FoldMotion.speed
+        withAnimation(.spring(duration: 0.42, bounce: 0.4).speed(speed).delay((0.12 + Double(rank) * 0.055) / speed)) {
             cascadeIn = true
         }
     }
@@ -1311,7 +1317,7 @@ private struct IceBarItemView: View {
                 }
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
                 .animation(.easeOut(duration: 0.12), value: isKeySelected)
-                .scaleEffect(cascades && !cascadeIn ? 0.6 : 1)
+                .scaleEffect(cascades && !cascadeIn ? 0.3 : 1)
                 .opacity(cascades && !cascadeIn ? 0 : 1)
                 .onAppear { startCascade() }
                 .onChange(of: foldMorph?.keyItems.count) { startCascade() }

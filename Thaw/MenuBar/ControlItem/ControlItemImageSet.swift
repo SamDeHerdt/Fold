@@ -27,6 +27,16 @@ nonisolated struct ControlItemImageSet: Codable, Hashable, Identifiable {
         case foldSparkle = "Sparkle"
         case foldTray = "Tray"
         case foldCapsule = "Pill"
+        case foldDots = "Dots"
+        case foldDrop = "Drop"
+        case foldEye = "Eye"
+        case foldArchive = "Archive"
+        case foldStack = "Stack"
+        case foldPlus = "Plus"
+        case foldRing = "Ring"
+        case foldStar = "Star"
+        case foldHeart = "Heart"
+        case foldArrow = "Arrow Line"
         case custom = "Custom"
 
         /// Localized string key representation.
@@ -46,6 +56,16 @@ nonisolated struct ControlItemImageSet: Codable, Hashable, Identifiable {
             case .foldSparkle: "Sparkle"
             case .foldTray: "Tray"
             case .foldCapsule: "Pill"
+            case .foldDots: "Dots"
+            case .foldDrop: "Drop"
+            case .foldEye: "Eye"
+            case .foldArchive: "Archive"
+            case .foldStack: "Stack"
+            case .foldPlus: "Plus"
+            case .foldRing: "Ring"
+            case .foldStar: "Star"
+            case .foldHeart: "Heart"
+            case .foldArrow: "Arrow Line"
             case .custom: "Custom"
             }
         }
@@ -87,6 +107,16 @@ nonisolated extension ControlItemImageSet {
         ControlItemImageSet(name: .foldSparkle, hidden: .symbol("sparkle"), visible: .symbol("sparkles")),
         ControlItemImageSet(name: .foldTray, hidden: .symbol("tray"), visible: .symbol("tray.full")),
         ControlItemImageSet(name: .foldCapsule, hidden: .symbol("capsule"), visible: .symbol("capsule.fill")),
+        ControlItemImageSet(name: .foldDots, hidden: .symbol("circle.grid.2x2"), visible: .symbol("circle.grid.2x2.fill")),
+        ControlItemImageSet(name: .foldDrop, hidden: .symbol("drop"), visible: .symbol("drop.fill")),
+        ControlItemImageSet(name: .foldEye, hidden: .symbol("eye.slash"), visible: .symbol("eye")),
+        ControlItemImageSet(name: .foldArchive, hidden: .symbol("archivebox"), visible: .symbol("archivebox.fill")),
+        ControlItemImageSet(name: .foldStack, hidden: .symbol("square.stack"), visible: .symbol("square.stack.fill")),
+        ControlItemImageSet(name: .foldPlus, hidden: .symbol("plus.circle"), visible: .symbol("minus.circle.fill")),
+        ControlItemImageSet(name: .foldRing, hidden: .symbol("circle"), visible: .symbol("circle.fill")),
+        ControlItemImageSet(name: .foldStar, hidden: .symbol("star"), visible: .symbol("star.fill")),
+        ControlItemImageSet(name: .foldHeart, hidden: .symbol("heart"), visible: .symbol("heart.fill")),
+        ControlItemImageSet(name: .foldArrow, hidden: .symbol("arrow.down.to.line"), visible: .symbol("arrow.up.to.line")),
     ]
 
     /// The image sets that the user can choose to display in the Ice icon.

@@ -26,6 +26,8 @@ enum FoldKey {
     static let maxRows = "FoldMaxRowsV1"
     /// Show each app's name beside its icon in the column arrangement.
     static let columnNames = "FoldColumnNamesV1"
+    /// Animation speed: 1 is normal, lower is slower, higher is faster.
+    static let motionSpeed = "FoldMotionSpeedV1"
     /// Show a dot on the menu-bar icon when a hidden icon changes.
     static let attentionDot = "FoldAttentionDotV1"
 
@@ -104,24 +106,36 @@ enum FoldMotion: String, CaseIterable, Identifiable {
         FoldMotion(rawValue: UserDefaults.standard.string(forKey: FoldKey.motion) ?? "") ?? .liquid
     }
 
+    /// The Speed setting (0.4–2), 1 when unset.
+    static var speed: Double {
+        let stored = UserDefaults.standard.object(forKey: FoldKey.motionSpeed) as? Double ?? 1
+        return min(max(stored, 0.4), 2)
+    }
+
+    /// Closing follows the Speed setting less than opening does: a slow,
+    /// showy open is pleasant, a slow close is in the way.
+    private static var closeSpeed: Double {
+        max(speed, 0.75)
+    }
+
     var openAnimation: Animation? {
-        baseOpenAnimation?.speed(1 / Self.debugSlowdown)
+        baseOpenAnimation?.speed(Self.speed / Self.debugSlowdown)
     }
 
     var closeAnimation: Animation? {
-        baseCloseAnimation?.speed(1 / Self.debugSlowdown)
+        baseCloseAnimation?.speed(Self.closeSpeed / Self.debugSlowdown)
     }
 
     private var baseOpenAnimation: Animation? {
         switch self {
-        case .liquid: .spring(duration: 0.5, bounce: 0.2)
-        case .bubbles: .spring(duration: 0.45, bounce: 0.22)
-        case .pop: .spring(duration: 0.35, bounce: 0.4)
-        case .hinge: .spring(duration: 0.45, bounce: 0.28)
-        case .cascade: .spring(duration: 0.3, bounce: 0.2)
-        case .materialize: .timingCurve(0.22, 1, 0.36, 1, duration: 0.32)
-        case .drop: .spring(duration: 0.28, bounce: 0)
-        case .fade: .easeOut(duration: 0.15)
+        case .liquid: .spring(duration: 0.8, bounce: 0.2)
+        case .bubbles: .spring(duration: 0.75, bounce: 0.2)
+        case .pop: .spring(duration: 0.5, bounce: 0.42)
+        case .hinge: .spring(duration: 0.6, bounce: 0.3)
+        case .cascade: .spring(duration: 0.4, bounce: 0.2)
+        case .materialize: .timingCurve(0.22, 1, 0.36, 1, duration: 0.5)
+        case .drop: .spring(duration: 0.42, bounce: 0)
+        case .fade: .easeOut(duration: 0.25)
         case .none: nil
         }
     }
@@ -142,7 +156,7 @@ enum FoldMotion: String, CaseIterable, Identifiable {
 
     /// How long the panel stays up after a close starts, matching `closeAnimation`.
     var closeDelay: TimeInterval {
-        baseCloseDelay * Self.debugSlowdown
+        baseCloseDelay * Self.debugSlowdown / Self.closeSpeed
     }
 
     private var baseCloseDelay: TimeInterval {
@@ -595,7 +609,7 @@ struct FoldMorphReveal: ViewModifier, Animatable {
     }
 
     private var dropOffset: CGFloat {
-        motion == .drop ? -6 * (1 - min(progress, 1)) : 0
+        motion == .drop ? -14 * (1 - min(progress, 1)) : 0
     }
 
     /// Pop springs out of the icon; Elastic drops and wobbles like rubber.
@@ -607,14 +621,14 @@ struct FoldMorphReveal: ViewModifier, Animatable {
             return CGSize(width: s, height: s)
         case .drop:
             // Glide: barely-there, origin-aware scale, as macOS menus do.
-            let s: CGFloat = 0.97 + 0.03 * min(p, 1)
+            let s: CGFloat = 0.93 + 0.07 * min(p, 1)
             return CGSize(width: s, height: s)
         case .cascade:
             // Origin-aware and subtle: never from zero.
-            let s: CGFloat = 0.94 + 0.06 * p
+            let s: CGFloat = 0.9 + 0.1 * p
             return CGSize(width: s, height: s)
         case .materialize:
-            let s: CGFloat = 1.07 - 0.07 * min(p, 1)
+            let s: CGFloat = 1.12 - 0.12 * min(p, 1)
             return CGSize(width: s, height: s)
         default:
             return CGSize(width: 1, height: 1)
@@ -623,11 +637,11 @@ struct FoldMorphReveal: ViewModifier, Animatable {
 
     /// Fold: degrees the flap still has to swing down, hinged on its top edge.
     private var hingeAngle: Double {
-        motion == .hinge ? -78 * Double(1 - max(progress, 0)) : 0
+        motion == .hinge ? -86 * Double(1 - max(progress, 0)) : 0
     }
 
     private var focusBlur: CGFloat {
-        motion == .materialize ? 10 * (1 - Self.unit(progress)) : 0
+        motion == .materialize ? 16 * (1 - Self.unit(progress)) : 0
     }
 
     func body(content: Content) -> some View {
