@@ -56,6 +56,15 @@ extension MenuBarItemManager {
         /// The window of the item's shown interface.
         var shownInterfaceWindow: WindowInfo?
 
+        /// Fold: the user clicked somewhere else or pressed Escape after
+        /// opening the item, which closes any menu. Lets an item whose
+        /// interface was never identified go home without the long wait.
+        var dismissedByUser = false
+
+        /// When the item was shown; Fold's own click that opens the item
+        /// must not be read as the user dismissing it.
+        let foldShownAt = Date.now
+
         /// The number of attempts that have been made to rehide the item.
         var rehideAttempts = 0
 
@@ -150,6 +159,10 @@ extension MenuBarItemManager {
                     return app.isActive && current.isOnScreen ? .showing : .absent
                 }
                 return current.isOnScreen ? .showing : .absent
+            }
+
+            if dismissedByUser {
+                return appHasVisiblePopup() ? .showing : .absent
             }
 
             // The tracked window is gone or was never captured. During the
@@ -505,6 +518,56 @@ extension MenuBarItemManager {
             }
     }
 
+    // MARK: Fold: dismissal by the user
+
+    private static var foldDismissMonitor: Any?
+
+    /// Watches for the clicks and Escape presses that close a menu, so an
+    /// opened icon returns to the drawer as soon as its menu is gone.
+    private func foldWatchForDismissal() {
+        guard Constants.bundleIdentifier == "com.samdeherdt.fold", Self.foldDismissMonitor == nil else { return }
+        Self.foldDismissMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            let isEscape = event.type == .keyDown && event.keyCode == 53
+            guard event.type != .keyDown || isEscape else { return }
+            Task { @MainActor [weak self] in
+                self?.foldNoteDismissal(isEscape: isEscape)
+            }
+        }
+    }
+
+    private func foldNoteDismissal(isEscape: Bool) {
+        guard !temporarilyShownItemContexts.isEmpty else {
+            if let monitor = Self.foldDismissMonitor {
+                NSEvent.removeMonitor(monitor)
+                Self.foldDismissMonitor = nil
+            }
+            return
+        }
+        let pointer = CGEvent(source: nil)?.location
+        let windows = isEscape ? [] : WindowInfo.createWindows(option: .onScreen)
+        var changed = false
+        for context in temporarilyShownItemContexts
+            where !context.dismissedByUser && Date.now.timeIntervalSince(context.foldShownAt) > 0.9
+        {
+            // A click inside something the item's app is showing above
+            // normal windows is the user using its menu, not leaving it.
+            if let pointer, windows.contains(where: { window in
+                context.interfacePIDs.contains(window.ownerPID)
+                    && window.layer != 0
+                    && window.bounds.height > MenuBarItemManager.maxMenuBarItemHeight
+                    && window.bounds.contains(pointer)
+            }) {
+                continue
+            }
+            context.dismissedByUser = true
+            changed = true
+        }
+        if changed {
+            MenuBarItemManager.diagLog.debug("Fold: menu dismissed by the user, rehiding soon")
+            runRehideTimer(for: 0.3)
+        }
+    }
+
     /// The result of a ``temporarilyShow(item:clickingWith:on:fastPath:)`` call.
     enum TemporaryShowResult {
         /// The item was never moved; a precondition failed (missing state,
@@ -716,6 +779,7 @@ extension MenuBarItemManager {
             originalSection: originalSection
         )
         temporarilyShownItemContexts.append(context)
+        foldWatchForDismissal()
 
         rehideTimer?.invalidate()
         defer {
