@@ -634,6 +634,7 @@ private struct IceBarContentView: View {
     @AppStorage(FoldKey.motion) private var foldMotion = FoldMotion.liquid.rawValue
     @AppStorage(FoldKey.iconSpacing) private var foldIconSpacing = 0.0
     @AppStorage(FoldKey.iconScale) private var foldIconScale = 1.0
+    @AppStorage(FoldKey.maxRows) private var foldMaxRows = 8
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var morphProgress: CGFloat = 0
@@ -807,7 +808,10 @@ private struct IceBarContentView: View {
         let menuBarHeight = screen.getMenuBarHeightEstimate()
         let available = (screen.frame.maxY - menuBarHeight) - screen.visibleFrame.minY
         let totalPadding: CGFloat = 10 + verticalPadding * 2
-        return max(available - totalPadding, contentHeight)
+        let screenLimit = max(available - totalPadding, contentHeight)
+        guard Constants.bundleIdentifier == "com.samdeherdt.fold" else { return screenLimit }
+        // Fold: show at most this many rows, then scroll.
+        return min(screenLimit, CGFloat(max(1, foldMaxRows)) * contentHeight)
     }
 
     /// Total intrinsic height of all items/rows for the current layout.

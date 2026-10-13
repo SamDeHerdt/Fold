@@ -22,6 +22,15 @@ enum FoldKey {
     /// Icon size inside the drawer, as a multiple of the menu bar's (0.7–1.4).
     static let iconScale = "FoldIconScaleV1"
 
+    /// Rows visible in the grid and column arrangements before they scroll.
+    static let maxRows = "FoldMaxRowsV1"
+    /// Show a dot on the menu-bar icon when a hidden icon changes.
+    static let attentionDot = "FoldAttentionDotV1"
+
+    static var attentionDotEnabled: Bool {
+        UserDefaults.standard.object(forKey: attentionDot) as? Bool ?? true
+    }
+
     static var hoverDelaySeconds: Double {
         UserDefaults.standard.object(forKey: hoverDelay) as? Double ?? 0.18
     }

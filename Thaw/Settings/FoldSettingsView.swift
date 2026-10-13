@@ -43,6 +43,8 @@ struct FoldSettingsContent: View {
     @AppStorage(FoldKey.hoverDelay) private var hoverDelay = 0.18
     @AppStorage(FoldKey.iconSpacing) private var iconSpacing = 0.0
     @AppStorage(FoldKey.iconScale) private var iconScale = 1.0
+    @AppStorage(FoldKey.attentionDot) private var attentionDot = true
+    @AppStorage(FoldKey.maxRows) private var maxRows = 8
     @AppStorage("FoldSettingsTabV1") private var tab = FoldSettingsTab.look
     @State private var isArranging = false
     @State private var window: NSWindow?
@@ -61,7 +63,7 @@ struct FoldSettingsContent: View {
 
     /// Anything that changes how the drawer looks or moves replays the preview.
     private var previewSignature: String {
-        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(general.iceIcon.name.rawValue)"
+        "\(motion)|\(look)|\(glass)|\(appearance)|\(maxWidth)|\(iconSpacing)|\(iconScale)|\(arrangementBinding.wrappedValue.rawValue)|\(gridColumnsBinding.wrappedValue)|\(maxRows)|\(general.iceIcon.name.rawValue)"
     }
 
     var body: some View {
@@ -80,6 +82,9 @@ struct FoldSettingsContent: View {
                     cap: FoldWidth.cap(stored: maxWidth, screenWidth: screenWidth),
                     spacing: iconSpacing,
                     iconScale: iconScale,
+                    arrangement: arrangementBinding.wrappedValue,
+                    columns: gridColumnsBinding.wrappedValue,
+                    maxRows: maxRows,
                     replay: replay
                 ) {
                     replay += 1
@@ -190,6 +195,18 @@ struct FoldSettingsContent: View {
                         Text("\(gridColumnsBinding.wrappedValue)").monospacedDigit().foregroundStyle(.secondary)
                     }
                 }
+                Stepper(value: $maxRows, in: 1 ... 12) {
+                    LabeledContent("Rows shown") {
+                        Text("\(maxRows)").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if arrangementBinding.wrappedValue == .vertical {
+                Stepper(value: $maxRows, in: 2 ... 20) {
+                    LabeledContent("Icons shown") {
+                        Text("\(maxRows)").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
             }
             if arrangementBinding.wrappedValue == .horizontal {
             LabeledContent("Length") {
@@ -291,6 +308,7 @@ struct FoldSettingsContent: View {
                 Text("Only when I close it").tag(FoldClose.never)
             }
             LaunchAtLogin.Toggle { Text("Open at login") }
+            Toggle("Dot on the icon when a hidden icon changes", isOn: $attentionDot)
         } header: {
             Text("Close")
         } footer: {
@@ -359,9 +377,9 @@ struct FoldSettingsContent: View {
         case .horizontal:
             maxWidth > 0 ? "Up to \(Int(lengthBinding.wrappedValue)) pt. More icons scroll." : "As wide as your icons need, up to the screen edge."
         case .grid:
-            "Icons wrap into rows. Liquid and Bubbles open as Pop in this arrangement."
+            "Icons wrap into rows; more than \(maxRows) rows scroll. Liquid and Bubbles open as Pop here."
         case .vertical:
-            "Icons stack in one column. Liquid and Bubbles open as Pop in this arrangement."
+            "Icons stack in one column; more than \(maxRows) scroll. Liquid and Bubbles open as Pop here."
         }
     }
 
@@ -555,6 +573,9 @@ private struct FoldPreview: View {
     let cap: CGFloat
     let spacing: Double
     let iconScale: Double
+    let arrangement: IceBarLayout
+    let columns: Int
+    let maxRows: Int
     let replay: Int
     let onReplay: () -> Void
     @AppStorage(FoldKey.appearance) private var appearance = "dark"
@@ -624,16 +645,59 @@ private struct FoldPreview: View {
         return icons + CGFloat(max(0, images.count - 1)) * itemSpacing + Self.padding * 2
     }
 
-    /// Bar length in real points, then shrunk to fit the preview canvas.
-    private var realWidth: CGFloat { min(cap, naturalWidth) }
-    private var scale: CGFloat { min(1, (Self.canvas.width - 40) / realWidth) }
+    private var isRow: Bool { arrangement == .horizontal }
+
+    /// Uniform cell width for the grid and column arrangements.
+    private var cellWidth: CGFloat {
+        min(max(images.map { width(of: $0) }.max() ?? iconHeight, iconHeight), iconHeight * 1.8)
+    }
+
+    /// The icons as rows: one row, wrapped rows, or one icon per row.
+    private var rows: [[NSImage]] {
+        switch arrangement {
+        case .horizontal:
+            return [images]
+        case .vertical:
+            return images.map { [$0] }
+        case .grid:
+            let perRow = max(1, columns)
+            return stride(from: 0, to: images.count, by: perRow).map { Array(images[$0 ..< min($0 + perRow, images.count)]) }
+        }
+    }
+
+    private var shownRows: [[NSImage]] {
+        isRow ? rows : Array(rows.prefix(max(1, maxRows)))
+    }
+
+    /// Bar size in real points, before it is shrunk to fit the canvas.
+    private var realSize: CGSize {
+        switch arrangement {
+        case .horizontal:
+            return CGSize(width: min(cap, naturalWidth), height: barHeight)
+        case .vertical:
+            return CGSize(width: cellWidth + Self.padding * 2, height: CGFloat(shownRows.count) * barHeight)
+        case .grid:
+            let perRow = CGFloat(max(1, min(columns, images.count)))
+            return CGSize(
+                width: perRow * cellWidth + (perRow - 1) * itemSpacing + Self.padding * 2,
+                height: CGFloat(shownRows.count) * barHeight
+            )
+        }
+    }
+
+    private var scale: CGFloat {
+        let roomWidth: CGFloat = Self.canvas.width - 40
+        let roomHeight: CGFloat = Self.canvas.height - Self.menuBarHeight - 34
+        return min(1, roomWidth / realSize.width, roomHeight / realSize.height)
+    }
 
     private var visibleCount: Int {
+        guard isRow else { return shownRows.reduce(0) { $0 + $1.count } }
         var used = Self.padding * 2
         var count = 0
         for image in images.reversed() {
             let next = used + width(of: image) + (count > 0 ? itemSpacing : 0)
-            if next > realWidth { break }
+            if next > realSize.width { break }
             used = next
             count += 1
         }
@@ -641,11 +705,12 @@ private struct FoldPreview: View {
     }
 
     var body: some View {
-        let barWidth: CGFloat = realWidth * scale
+        let size = realSize
+        let barWidth: CGFloat = size.width * scale
         let chevronX: CGFloat = Self.canvas.width * 0.7
         let barX: CGFloat = min(max(chevronX - barWidth / 2, 12), Self.canvas.width - barWidth - 12)
         let barY: CGFloat = Self.menuBarHeight + 6
-        let scaledBarHeight: CGFloat = barHeight * scale
+        let scaledBarHeight: CGFloat = size.height * scale
         let caption: String = images.count > visibleCount ? "\(visibleCount) of \(images.count) icons · rest scroll" : "\(images.count) icons"
 
         ZStack(alignment: .topLeading) {
@@ -661,8 +726,8 @@ private struct FoldPreview: View {
                     .background(Capsule().fill(Color.primary.opacity(chevronHighlight)))
                     .position(x: chevronX, y: Self.menuBarHeight / 2)
             }
-            bar(anchorX: (chevronX - barX) / scale, pourCenterY: (Self.menuBarHeight / 2 - barY) / scale)
-                .frame(width: realWidth, height: barHeight)
+            bar(size: size, anchorX: (chevronX - barX) / scale, pourCenterY: (Self.menuBarHeight / 2 - barY) / scale)
+                .frame(width: size.width, height: size.height)
                 .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: barWidth, height: scaledBarHeight, alignment: .topLeading)
                 .offset(x: barX, y: barY)
@@ -690,7 +755,6 @@ private struct FoldPreview: View {
         .onChange(of: replay) {
             guard !reduceMotion else { return }
             progress = 0
-            let motion = FoldMotion(rawValue: motionRaw) ?? .liquid
             if let animation = motion.openAnimation {
                 withAnimation(animation.delay(0.1)) { progress = 1 }
             } else {
@@ -701,27 +765,55 @@ private struct FoldPreview: View {
         .accessibilityLabel("Preview of the Fold drawer")
     }
 
-    private func bar(anchorX: CGFloat, pourCenterY: CGFloat) -> some View {
-        HStack(spacing: itemSpacing) {
-            ForEach(Array(images.enumerated()), id: \.offset) { _, image in
-                Image(nsImage: image)
-                    .renderingMode(.template)
-                    .resizable()
-                    .frame(width: width(of: image), height: iconHeight)
+    /// The motion as the drawer would play it in this arrangement.
+    private var motion: FoldMotion {
+        (FoldMotion(rawValue: motionRaw) ?? .liquid).effective(inRow: isRow)
+    }
+
+    private func icon(_ image: NSImage, cell: Bool) -> some View {
+        Image(nsImage: image)
+            .renderingMode(.template)
+            .resizable()
+            .frame(width: width(of: image), height: iconHeight)
+            .frame(width: cell ? cellWidth : nil, height: cell ? barHeight : nil)
+    }
+
+    @ViewBuilder
+    private var icons: some View {
+        if isRow {
+            HStack(spacing: itemSpacing) {
+                ForEach(Array(images.enumerated()), id: \.offset) { _, image in
+                    icon(image, cell: false)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(shownRows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: itemSpacing) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, image in
+                            icon(image, cell: true)
+                        }
+                    }
+                }
             }
         }
-        .foregroundStyle(iconColor)
-        .padding(.horizontal, Self.padding)
-        .frame(width: realWidth, height: barHeight, alignment: .trailing)
-        .clipped()
-        .shadow(color: lookValue == .minimal ? .black.opacity(0.45) : .clear, radius: 2)
-        .modifier(FoldMorphReveal(
-            progress: progress,
-            anchorX: anchorX,
-            motion: FoldMotion(rawValue: motionRaw) ?? .liquid,
-            pourCenterY: pourCenterY,
-            slotCount: images.count
-        ))
+    }
+
+    private func bar(size: CGSize, anchorX: CGFloat, pourCenterY: CGFloat) -> some View {
+        icons
+            .foregroundStyle(iconColor)
+            .padding(.horizontal, Self.padding)
+            .frame(width: size.width, height: size.height, alignment: isRow ? .trailing : .topLeading)
+            .clipped()
+            .shadow(color: lookValue == .minimal ? .black.opacity(0.45) : .clear, radius: 2)
+            .modifier(FoldMorphReveal(
+                progress: progress,
+                anchorX: anchorX,
+                motion: motion,
+                pourCenterY: pourCenterY,
+                slotCount: images.count,
+                cornerRadius: isRow ? nil : 18
+            ))
     }
 }
 

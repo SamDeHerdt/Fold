@@ -228,7 +228,16 @@ final class ControlItem {
     private var foldHoverArmed = true
     private var foldHoverSuppressedUntil = Date.distantPast
 
+    /// Fold: a hidden icon changed while the drawer was closed, so the
+    /// menu-bar icon carries a dot until the drawer is next opened.
+    private var foldHasAttention = false
+    private var foldAttentionTask: Task<Void, Never>?
+    private var foldSeenImages = [MenuBarItemTag: MenuBarItemImageCache.CapturedImage]()
+    private var foldChangeTimes = [MenuBarItemTag: [Date]]()
+    private var foldMutedTags = Set<MenuBarItemTag>()
+
     deinit {
+        foldAttentionTask?.cancel()
         foldHoverTask?.cancel()
         foldEngagedObservationTask?.cancel()
         showIceIconObservationTask?.cancel()
@@ -622,6 +631,15 @@ final class ControlItem {
         }
         diagLog.notice("Fold chevron hover watch started")
 
+        foldAttentionTask?.cancel()
+        foldAttentionTask = Task { @MainActor [weak self, imageCache = appState.imageCache] in
+            let changes = Observations { imageCache.images }
+            for await images in changes {
+                guard let self else { return }
+                noteHiddenImages(images)
+            }
+        }
+
         foldEngagedObservationTask?.cancel()
         foldEngagedObservationTask = Task { @MainActor [weak self, navigationState = appState.navigationState, itemManager = appState.itemManager] in
             let changes = Observations {
@@ -763,6 +781,58 @@ final class ControlItem {
         HotkeyAction.searchMenuBarItems.perform(appState: appState)
     }
 
+    /// Compares the hidden icons' images with the last ones seen and raises
+    /// the attention dot when one of them really changed.
+    private func noteHiddenImages(_ images: [MenuBarItemTag: MenuBarItemImageCache.CapturedImage]) {
+        guard let appState else { return }
+        let hidden = appState.itemManager.itemCache.managedItems(for: .hidden).map(\.tag)
+        var changed = [MenuBarItemTag]()
+        for tag in hidden {
+            guard let image = images[tag] else { continue }
+            if let seen = foldSeenImages[tag], !MenuBarItemImageCache.CapturedImage.isVisuallyEqual(seen, image) {
+                changed.append(tag)
+            }
+            foldSeenImages[tag] = image
+        }
+        guard !changed.isEmpty else { return }
+        // Most icons changing together is the menu bar restyling (light/dark,
+        // wallpaper), not an app asking for attention.
+        guard changed.count * 2 <= max(hidden.count, 2) else { return }
+
+        let now = Date.now
+        var attention = false
+        for tag in changed where !foldMutedTags.contains(tag) {
+            let recent = (foldChangeTimes[tag] ?? []).filter { now.timeIntervalSince($0) < 120 } + [now]
+            foldChangeTimes[tag] = recent
+            if recent.count >= 3 {
+                // An icon that keeps changing (a meter, a clock) isn't news.
+                foldMutedTags.insert(tag)
+                diagLog.notice("Fold attention: muting \(tag.description), it changes constantly")
+            } else {
+                attention = true
+            }
+        }
+        guard attention, FoldKey.attentionDotEnabled, !isFoldEngaged, !foldHasAttention else { return }
+        foldHasAttention = true
+        diagLog.notice("Fold attention: a hidden icon changed")
+        updateStatusItem()
+    }
+
+    /// The icon with a small dot at its top-right corner, in the icon's own
+    /// (template) colour.
+    private func foldImageWithDot(_ image: NSImage) -> NSImage {
+        let dot: CGFloat = 5
+        let size = NSSize(width: image.size.width + dot, height: image.size.height)
+        let result = NSImage(size: size, flipped: false) { _ in
+            image.draw(in: NSRect(origin: .zero, size: image.size))
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: NSRect(x: size.width - dot, y: size.height - dot - 0.5, width: dot, height: dot)).fill()
+            return true
+        }
+        result.isTemplate = true
+        return result
+    }
+
     private func checkFoldChevronHover() {
         let pointer = FoldPointer.location
         guard
@@ -805,6 +875,8 @@ final class ControlItem {
             // Opened by click or hover: wait for the pointer to leave before
             // hover may open it again, so closing it doesn't bounce back open.
             foldHoverArmed = false
+            // Opening the drawer is how you see what changed.
+            foldHasAttention = false
         }
         guard engaged != isFoldEngaged else { return }
         isFoldEngaged = engaged
@@ -864,7 +936,7 @@ final class ControlItem {
                 image = originalImage.resized(to: newSize)
             }
 
-            button.image = image
+            button.image = foldHasAttention && !isFoldEngaged ? image.map(foldImageWithDot) : image
             if isFoldEngaged {
                 button.highlight(true)
             }
