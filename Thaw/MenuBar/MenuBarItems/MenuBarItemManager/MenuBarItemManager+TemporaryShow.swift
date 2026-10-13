@@ -819,6 +819,9 @@ extension MenuBarItemManager {
             among: interfaceCandidates,
             interfacePIDs: context.interfacePIDs
         )
+        if let opened = context.shownInterfaceWindow {
+            FoldFlight.link(itemWindowID: clickItem.windowID, popupWindowID: opened.windowID)
+        }
 
         return .movedAndClicked
     }
@@ -1026,6 +1029,7 @@ extension MenuBarItemManager {
             do {
                 try await move(item: item, to: destination, on: context.displayID, skipInputPause: true)
                 // Successfully rehidden; remove the pending relocation entry.
+                FoldFlight.comeBack()
                 let tagIdentifier = context.tag.tagIdentifier
                 pendingRelocations.removeValue(forKey: tagIdentifier)
                 pendingReturnDestinations.removeValue(forKey: tagIdentifier)

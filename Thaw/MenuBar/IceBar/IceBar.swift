@@ -1145,6 +1145,8 @@ private struct IceBarItemView: View {
 
     /// Cascade: this icon has popped in.
     @State private var cascadeIn = false
+    /// The icon's frame in the drawer window (top-left origin).
+    @State private var iconFrame = CGRect.zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var cascades: Bool {
@@ -1189,6 +1191,22 @@ private struct IceBarItemView: View {
             let clickStartTime = Date.now
             IceBarItemView.diagLog.debug("leftClick: user clicked \(item.logString)")
             let panel = menuBarManager.iceBarPanel
+            if foldMorph != nil, let image, let screen = panel.screen {
+                // Fold: the icon flies up to where macOS will show it.
+                let frame = panel.frame
+                FoldFlight.depart(
+                    image: image,
+                    tint: isLightBackground ? .black : .white,
+                    from: CGRect(
+                        x: frame.minX + iconFrame.minX,
+                        y: frame.maxY - iconFrame.maxY,
+                        width: iconFrame.width,
+                        height: iconFrame.height
+                    ),
+                    chevronWindow: menuBarManager.controlItem(withName: .visible)?.window,
+                    on: screen
+                )
+            }
             menuBarManager.section(withName: section)?.hide()
             Task {
                 // Wait until the IceBar panel is fully closed before checking
@@ -1281,8 +1299,8 @@ private struct IceBarItemView: View {
     }
 
     /// Column with names: a fixed-width row of icon + app name.
-    private static let namedRowWidth: CGFloat = 200
-    private static let namedIconColumn: CGFloat = 46
+    private static let namedRowWidth: CGFloat = 168
+    private static let namedIconColumn: CGFloat = 30
 
     @ViewBuilder
     private func iconAndName(_ image: NSImage, size: CGSize) -> some View {
@@ -1292,6 +1310,7 @@ private struct IceBarItemView: View {
             .antialiased(true)
             .resizable()
             .frame(width: size.width, height: size.height)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { iconFrame = $0 }
         if foldMorph?.showsNames == true {
             HStack(spacing: 8) {
                 // One fixed icon column, so every name starts at the same x.
@@ -1302,7 +1321,7 @@ private struct IceBarItemView: View {
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 4)
             .frame(width: Self.namedRowWidth, height: size.height, alignment: .leading)
         } else {
             icon
