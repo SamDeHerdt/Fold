@@ -182,7 +182,12 @@ enum FoldFlight {
     /// Draws one outline around the menu-bar icon and the window it opened,
     /// for as long as that window stays open.
     static func link(itemWindowID: CGWindowID, popupWindowID: CGWindowID) {
-        guard Constants.bundleIdentifier == "com.samdeherdt.fold" else { return }
+        // Off unless asked for: another app's menu gives no reliable edge to
+        // trace (its bounds include shadow, its glass is see-through), so the
+        // outline rarely fits. `defaults write com.samdeherdt.fold FoldLinkOutline -bool YES`
+        guard Constants.bundleIdentifier == "com.samdeherdt.fold",
+              UserDefaults.standard.bool(forKey: "FoldLinkOutline")
+        else { return }
         unlink(animated: false)
         linkTask = Task { @MainActor in
             var first = true

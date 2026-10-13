@@ -1139,7 +1139,7 @@ private struct IceBarContentView: View {
 // MARK: - IceBarItemView
 
 private struct IceBarItemView: View {
-    private static let diagLog = DiagLog(category: "IceBar.ItemView")
+    fileprivate static let diagLog = DiagLog(category: "IceBar.ItemView")
 
     let imageCache: MenuBarItemImageCache
     let itemManager: MenuBarItemManager
@@ -1476,22 +1476,26 @@ private struct IceBarItemClickView: NSViewRepresentable {
             super.mouseDown(with: event)
             tooltipController.cancel()
             lastLeftMouseDownDate = .now
-            lastLeftMouseDownLocation = NSEvent.mouseLocation
+            // The event's own position: NSEvent.mouseLocation can lag behind
+            // while this app is in the background, which made a first click
+            // look like a drag and get dropped.
+            lastLeftMouseDownLocation = event.locationInWindow
         }
 
         override func rightMouseDown(with event: NSEvent) {
             super.rightMouseDown(with: event)
             tooltipController.cancel()
             lastRightMouseDownDate = .now
-            lastRightMouseDownLocation = NSEvent.mouseLocation
+            lastRightMouseDownLocation = event.locationInWindow
         }
 
         override func mouseUp(with event: NSEvent) {
             super.mouseUp(with: event)
             guard
-                Date.now.timeIntervalSince(lastLeftMouseDownDate) < 0.5,
-                lastLeftMouseDownLocation.distance(to: NSEvent.mouseLocation) < 5
+                Date.now.timeIntervalSince(lastLeftMouseDownDate) < 0.8,
+                lastLeftMouseDownLocation.distance(to: event.locationInWindow) < 6
             else {
+                IceBarItemView.diagLog.notice("leftClick dropped: down \(Int(Date.now.timeIntervalSince(lastLeftMouseDownDate) * 1000)) ms ago, moved \(Int(lastLeftMouseDownLocation.distance(to: event.locationInWindow))) pt")
                 return
             }
             leftClickAction()
@@ -1500,8 +1504,8 @@ private struct IceBarItemClickView: NSViewRepresentable {
         override func rightMouseUp(with event: NSEvent) {
             super.rightMouseUp(with: event)
             guard
-                Date.now.timeIntervalSince(lastRightMouseDownDate) < 0.5,
-                lastRightMouseDownLocation.distance(to: NSEvent.mouseLocation) < 5
+                Date.now.timeIntervalSince(lastRightMouseDownDate) < 0.8,
+                lastRightMouseDownLocation.distance(to: event.locationInWindow) < 6
             else {
                 return
             }
