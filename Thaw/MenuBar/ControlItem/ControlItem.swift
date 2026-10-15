@@ -225,6 +225,9 @@ final class ControlItem {
     /// app is active. Re-arms only after the pointer leaves the chevron.
     private var foldHoverTask: Task<Void, Never>?
     private var foldHoverSince: Date?
+    /// Where the pointer was when the current dwell started; moving away from it
+    /// restarts the dwell, so sweeping past the icon never opens the drawer.
+    private var foldHoverAnchor: NSPoint?
     private var foldHoverArmed = true
     private var foldHoverSuppressedUntil = Date.distantPast
 
@@ -890,21 +893,33 @@ final class ControlItem {
             return
         }
         // The icon also appears in other displays' menu bars; hovering any
-        // copy opens the drawer (on that display).
-        let overIcon = frame.insetBy(dx: -2, dy: -2).contains(pointer) || NSScreen.screens.contains { screen in
-            FoldChevron.frame(of: window, on: screen)?.insetBy(dx: -2, dy: -2).contains(pointer) == true
+        // copy opens the drawer (on that display). Only the icon itself counts:
+        // the status-item window spans the full menu-bar height, so a pointer
+        // pushed against the top of the screen or sliding along the bar was
+        // "on the icon" — trim the edges off.
+        let hotArea = { (rect: CGRect) in rect.insetBy(dx: 3, dy: min(4, rect.height * 0.18)) }
+        let overIcon = hotArea(frame).contains(pointer) || NSScreen.screens.contains { screen in
+            FoldChevron.frame(of: window, on: screen).map(hotArea)?.contains(pointer) == true
         }
         guard overIcon else {
             foldHoverArmed = true
             foldHoverSince = nil
+            foldHoverAnchor = nil
             return
         }
         guard foldHoverArmed, !isFoldEngaged, NSEvent.pressedMouseButtons == 0, Date.now > foldHoverSuppressedUntil else {
             foldHoverSince = nil
             return
         }
+        // The pointer has to rest: any move of more than 3 pt restarts the wait.
+        if let anchor = foldHoverAnchor, hypot(pointer.x - anchor.x, pointer.y - anchor.y) > 3 {
+            foldHoverSince = .now
+            foldHoverAnchor = pointer
+            return
+        }
         if let since = foldHoverSince {
             if Date.now.timeIntervalSince(since) > FoldKey.hoverDelaySeconds {
+                foldHoverAnchor = nil
                 foldHoverArmed = false
                 foldHoverSince = nil
                 diagLog.notice("Fold hover over chevron: opening drawer")
@@ -912,6 +927,7 @@ final class ControlItem {
             }
         } else {
             foldHoverSince = .now
+            foldHoverAnchor = pointer
         }
     }
 

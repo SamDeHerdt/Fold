@@ -782,7 +782,10 @@ final class MenuBarItemImageCache: @unchecked Sendable {
             }
             // Floor the sleep so a sub-millisecond stored interval cannot
             // truncate to a zero-length sleep and spin the main actor.
-            try? await Task.sleep(for: .seconds(max(interval, Self.minIconRefreshInterval)))
+            // Fold: app icons (no Screen Recording) don't change, so there's
+            // nothing to refresh several times a second.
+            let floor = ScreenCapture.captureAllowed ? Self.minIconRefreshInterval : 2
+            try? await Task.sleep(for: .seconds(max(interval, floor)))
             guard !Task.isCancelled else { break }
 
             let nav = appState.navigationState
@@ -1193,6 +1196,13 @@ final class MenuBarItemImageCache: @unchecked Sendable {
         scale: CGFloat,
         appState: AppState
     ) async -> CaptureResult {
+        // Fold: without live icons (or Screen Recording) every item gets its
+        // app icon instead of a capture — nothing touches the screen.
+        guard ScreenCapture.captureAllowed else {
+            var result = CaptureResult()
+            result.images = FoldAppIcons.images(for: items, scale: scale)
+            return result
+        }
         // Thaw's own control items always capture as transparent via
         // CGWindowListCreateImage, so skip them to avoid the perpetual
         // fail -> blacklist -> cooldown -> retry cycle.
@@ -1296,6 +1306,18 @@ final class MenuBarItemImageCache: @unchecked Sendable {
         scale: CGFloat,
         viaSCK: Bool = false
     ) async {
+        // Fold: app icons instead of captures (see captureImages(of:)).
+        guard ScreenCapture.captureAllowed else {
+            let icons = FoldAppIcons.images(for: items, scale: scale)
+            guard !icons.isEmpty, !Task.isCancelled else { return }
+            await MainActor.run {
+                for (tag, icon) in icons where !CapturedImage.isVisuallyEqual(self.images[tag], icon) {
+                    self.images[tag] = icon
+                    updateAccessOrder(for: tag)
+                }
+            }
+            return
+        }
         var windowIDs = [CGWindowID]()
         var storage = [CGWindowID: (MenuBarItem, CGRect)]()
         var boundsUnion = CGRect.null

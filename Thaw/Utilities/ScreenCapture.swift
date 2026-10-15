@@ -103,7 +103,15 @@ nonisolated enum ScreenCapture {
     ///   - screenBounds: The bounds to capture, specified in screen coordinates.
     ///     Pass `nil` to capture the minimum rectangle that encloses the windows.
     ///   - option: Options that specify which parts of the windows are captured.
+    /// Fold: no capture at all unless the user turned on live icons and granted
+    /// Screen Recording. Without this gate a missing permission still triggered
+    /// capture attempts (and their prompts / recording indicator).
+    nonisolated static var captureAllowed: Bool {
+        FoldKey.liveIconsEnabled && cachedCheckPermissions()
+    }
+
     static func captureWindows(with windowIDs: [CGWindowID], screenBounds: CGRect? = nil, option: CGWindowImageOption = []) -> CGImage? {
+        guard captureAllowed else { return nil }
         // Use SkyLight's private API (SLWindowListCreateImageFromArray) instead of
         // the deprecated CGWindowListCreateImageFromArray, which is unavailable
         // when targeting macOS 26+. ScreenCaptureKit still doesn't support
@@ -128,7 +136,8 @@ nonisolated enum ScreenCapture {
     /// but the underlying SCK filter is display-bounded; use captureWindows
     /// (SkyLight) for windows positioned off-display.
     static func captureWindowsAsync(with windowIDs: [CGWindowID], screenBounds: CGRect? = nil, option: CGWindowImageOption = []) async -> CGImage? {
-        await Bridging.captureWindowsImageSCK(windowIDs: windowIDs, screenBounds: screenBounds, options: option)
+        guard captureAllowed else { return nil }
+        return await Bridging.captureWindowsImageSCK(windowIDs: windowIDs, screenBounds: screenBounds, options: option)
     }
 
     /// Async, ScreenCaptureKit-backed equivalent of captureWindow.
@@ -150,6 +159,7 @@ nonisolated enum ScreenCapture {
         screenBounds: CGRect,
         displayID: CGDirectDisplayID
     ) async throws -> CGImage? {
+        guard captureAllowed else { return nil }
         // Get shareable content (displays and windows)
         let content = try await getShareableContent()
 

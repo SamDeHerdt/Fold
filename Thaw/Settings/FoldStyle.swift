@@ -9,7 +9,7 @@ import SwiftUI
 
 /// UserDefaults keys for Fold's own presentation settings.
 enum FoldKey {
-    static let appearance = "FoldAppearanceV1"
+    nonisolated static let appearance = "FoldAppearanceV1"
     static let glass = "FoldGlassV1"
     static let look = "FoldLookV1"
     /// Maximum drawer length in points; 0 means "as wide as the screen allows".
@@ -39,8 +39,20 @@ enum FoldKey {
         UserDefaults.standard.object(forKey: attentionDot) as? Bool ?? true
     }
 
+    /// Live icons (default): the drawer shows the real, minimal menu-bar
+    /// icons, captured from the menu bar — needs Screen Recording. Off: each
+    /// item's greyscale app icon (system items get a symbol) and Fold never
+    /// looks at the screen.
+    nonisolated static let liveIcons = "FoldLiveIconsV1"
+
+    nonisolated static var liveIconsEnabled: Bool {
+        UserDefaults.standard.object(forKey: liveIcons) as? Bool ?? true
+    }
+
+    /// 0.4 s: long enough that sweeping across the menu bar never opens the
+    /// drawer; the pointer also has to rest (see ControlItem's hover watch).
     static var hoverDelaySeconds: Double {
-        UserDefaults.standard.object(forKey: hoverDelay) as? Double ?? 0.18
+        UserDefaults.standard.object(forKey: hoverDelay) as? Double ?? 0.4
     }
 }
 

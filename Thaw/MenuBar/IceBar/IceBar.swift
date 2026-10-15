@@ -1323,8 +1323,10 @@ private struct IceBarItemView: View {
 
     @ViewBuilder
     private func iconAndName(_ image: NSImage, size: CGSize) -> some View {
+        // Fold: app icons (no Screen Recording) are greyscale images, not templates.
+        let fullColor = imageCache.images[item.tag].map { FoldAppIcons.isFullColor($0.cgImage) } ?? false
         let icon = Image(nsImage: image)
-            .renderingMode(.template)
+            .renderingMode(fullColor ? .original : .template)
             .interpolation(.high)
             .antialiased(true)
             .resizable()

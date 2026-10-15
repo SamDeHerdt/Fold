@@ -41,7 +41,8 @@ struct FoldSettingsContent: View {
     @AppStorage(FoldKey.look) private var look = FoldLook.glass.rawValue
     @AppStorage(FoldKey.maxWidth) private var maxWidth = 0.0
     @AppStorage(FoldKey.motion) private var motion = FoldMotion.liquid.rawValue
-    @AppStorage(FoldKey.hoverDelay) private var hoverDelay = 0.18
+    @AppStorage(FoldKey.hoverDelay) private var hoverDelay = 0.4
+    @AppStorage(FoldKey.liveIcons) private var liveIcons = true
     @AppStorage(FoldKey.iconSpacing) private var iconSpacing = 0.0
     @AppStorage(FoldKey.iconScale) private var iconScale = 1.0
     @AppStorage(FoldKey.attentionDot) private var attentionDot = true
@@ -374,6 +375,21 @@ struct FoldSettingsContent: View {
                     }
                 }
             }
+        }
+        Section {
+            Toggle("Live icons", isOn: $liveIcons)
+                .onChange(of: liveIcons) { _, on in
+                    if on, !ScreenCapture.cachedCheckPermissions(reset: true) {
+                        ScreenCapture.requestPermissions()
+                    }
+                }
+        } header: {
+            Text("Icons")
+        } footer: {
+            Text(liveIcons
+                ? "The drawer shows exactly what each icon shows, like a battery level. Needs Screen Recording, and Fold captures the menu bar while it runs."
+                : "The drawer shows a grey app icon for each item instead. Fold never looks at your screen, so it doesn't need Screen Recording.")
+                .foregroundStyle(.secondary)
         }
         Section {
             Picker("Close", selection: closeBinding) {
