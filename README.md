@@ -1,4 +1,6 @@
-# Fold
+<p align="center"><img src="docs/images/logo.png" width="96" alt="Fold logo"></p>
+<h1 align="center">Fold</h1>
+<p align="center">A quiet menu-bar drawer for macOS 26: one icon, and the icons you've hidden pour out underneath.</p>
 
 A quiet menu-bar drawer for macOS 26. One icon in your menu bar; click it (or rest on it) and the icons you've hidden pour out underneath in a small Liquid Glass bar. Click any of them to open its own menu or popover.
 
@@ -25,6 +27,9 @@ After that Fold updates itself: it checks this repo once a day, and you can also
 ### Settings
 
 A live preview sits on top and replays every change.
+
+<p align="center"><img src="docs/images/settings.png" width="460" alt="Fold settings window: live drawer preview on top, with the Look tab showing drawer styles"></p>
+<p align="center"><sub>The preview uses Fold's built-in sample icons; no real menu-bar items or data.</sub></p>
 
 | Tab | What's there |
 |---|---|
